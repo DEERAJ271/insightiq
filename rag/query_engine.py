@@ -22,3 +22,9 @@ def retrieve_context(question: str) -> str:
     retriever = get_retriever()
     docs = retriever.invoke(question)
     return "\n\n".join(d.page_content for d in docs)
+
+
+if __name__ == "__main__":
+    question = "what counts as a repeat customer?"
+    print(f"Q: {question}\n")
+    print(retrieve_context(question))
