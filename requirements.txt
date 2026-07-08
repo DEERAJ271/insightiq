@@ -3,6 +3,9 @@ pandas>=2.2
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
 python-dotenv>=1.0
+# torch 2.2.2 (latest available for Python 3.11 on x86_64 macOS) was compiled
+# against NumPy 1.x — NumPy 2.x causes an _ARRAY_API import error at runtime.
+numpy>=1.26,<2
 
 # ETL / data quality
 openpyxl>=3.1
@@ -13,7 +16,9 @@ langchain>=0.2
 langchain-anthropic>=0.1
 langchain-community>=0.2
 chromadb>=0.5
-sentence-transformers>=3.0
+# sentence-transformers 4.x+ requires torch>=2.4, which has no wheel for
+# Python 3.11 on x86_64 macOS — pin to 3.x until torch 2.4+ is available.
+sentence-transformers>=3.0,<4.0
 
 # LLM
 anthropic>=0.30
