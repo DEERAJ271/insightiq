@@ -29,7 +29,7 @@ def needs_sql(question: str) -> bool:
 
 def answer(question: str) -> str:
     if needs_sql(question):
-        df = answer_numeric_question(question)
+        _, df = answer_numeric_question(question)
         data_summary = df.to_markdown(index=False) if not df.empty else "No rows returned."
         context = f"Query result:\n{data_summary}"
     else:
