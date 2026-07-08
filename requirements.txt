@@ -1,0 +1,27 @@
+# Core
+pandas>=2.2
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+
+# ETL / data quality
+openpyxl>=3.1
+great-expectations>=0.18  # optional: swap for lightweight custom checks if too heavy
+
+# RAG
+langchain>=0.2
+langchain-anthropic>=0.1
+langchain-community>=0.2
+chromadb>=0.5
+sentence-transformers>=3.0
+
+# LLM
+anthropic>=0.30
+
+# App layer
+fastapi>=0.111
+uvicorn>=0.30
+streamlit>=1.36
+
+# Testing
+pytest>=8.2

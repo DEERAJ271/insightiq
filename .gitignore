@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.env
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+rag/chroma_store/
+*.pbix.bak
+.DS_Store
+.pytest_cache/
