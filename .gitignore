@@ -10,3 +10,4 @@ rag/chroma_store/
 *.pbix.bak
 .DS_Store
 .pytest_cache/
+scratch_*.py
