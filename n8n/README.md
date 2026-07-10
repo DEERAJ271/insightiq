@@ -1,7 +1,3 @@
-
-exit
-
-cat > n8n/README.md << 'EOF'
 # n8n Automation Layer
 
 Local n8n workflows, running natively (not Docker), automating InsightIQ's
@@ -15,11 +11,13 @@ IF (threshold check) → on failure, Ollama (llama3.2) generates a
 plain-English alert summary. Tested end-to-end with clean and simulated
 failing data.
 
-## Workflow 2: insightiq-etl-orchestration
+## Workflow 2: insightiq-etl-orchestration (Tested)
 
 Manual Trigger → Code node executes the full ETL pipeline
 (etl/run_pipeline.py) via execSync → Ollama (llama3.2) summarizes the run
-(row counts loaded per table) in plain English for a stakeholder.
+(row counts loaded per table) in plain English for a stakeholder. Tested
+end-to-end: pipeline runs, row counts are captured, and Ollama generates
+the summary successfully.
 
 Key fix: calling `source venv/bin/activate && python ...` via execSync
 hung indefinitely in n8n's non-interactive shell context. Resolved by
