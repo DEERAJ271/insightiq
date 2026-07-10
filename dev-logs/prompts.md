@@ -320,3 +320,36 @@ deprecation warnings remain, not errors).
 **Edit:** None — used as-is. `requirements.txt` itself was already
 correct; only the installed venv needed to be brought back in line with
 it.
+
+---
+
+## 2026-07-10 — Full 8-question regression test, post venv-drift fix
+
+**Prompt:** Restart Streamlit to pick up the venv fix, then re-run the
+same 8 questions through `chatbot.answer()` as a full regression test.
+
+**Output:** Routing was 100% correct across all 8 — including "Can you
+recount the steps for the ETL pipeline?", which confirms the
+word-boundary fix generalized beyond the original "what counts as X"
+bug it was written for, not just the one reported case.
+
+NL2SQL results (4 numeric questions, after excluding the SLA-breach-count
+question counted separately below): 1/4 succeeded cleanly (AOV by
+category, real per-category breakdown), 3/4 failed gracefully via the
+`SQLExecutionError` fallback message — no crash — due to llama3.2
+generating invalid SQL (hallucinated aliases, wrong column references,
+malformed date comparisons).
+
+One question ("How many orders had a delivery SLA breach?") surfaced a
+different and more concerning failure mode: the generated SQL executed
+successfully (no error to catch) but didn't actually compute the SLA
+breach count — the model answered with a vague hedge instead of a wrong
+number, but the underlying pattern is the same. This is qualitatively
+harder than the loud/caught failures above: there's no exception to
+catch and no signal to the user that the answer might be wrong. Silent
+wrong-or-non-answers are the general hard problem in NL2SQL correctness
+regardless of which model generates the SQL — the graceful-failure
+handling built earlier this session only covers SQL that fails to
+execute, not SQL that executes but answers the wrong question.
+
+**Edit:** None — used as-is.
