@@ -8,6 +8,7 @@ Claude-based classifier call, and support questions that need BOTH paths
 (e.g. "what's our repeat customer rate, and what counts as repeat?").
 """
 import os
+import re
 import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -33,7 +34,7 @@ NUMERIC_KEYWORDS = ["how many", "average", "total", "rate", "revenue", "trend", 
 
 def needs_sql(question: str) -> bool:
     q = question.lower()
-    return any(kw in q for kw in NUMERIC_KEYWORDS)
+    return any(re.search(rf"\b{re.escape(kw)}\b", q) for kw in NUMERIC_KEYWORDS)
 
 
 def answer(question: str) -> str:

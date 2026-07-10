@@ -255,3 +255,32 @@ rejection) still pass unaffected.
 proved the first version didn't actually catch the failure it was meant
 to catch — pandas re-wraps the underlying SQLAlchemy exception before it
 reaches `run_query()`'s except block.
+
+---
+
+## 2026-07-10 — Live UI testing surfaces a routing bug + a router limitation
+
+**Prompt:** Live-tested the chatbot with 8 real questions through the
+Streamlit UI (`streamlit run app/streamlit_app.py`).
+
+**Output:** Found and fixed a routing bug in `needs_sql()`
+(`llm/chatbot.py`): substring matching against `NUMERIC_KEYWORDS` made
+"counts" (as in "what counts as a repeat customer?") false-match the
+"count" keyword, misrouting a definitional question to NL2SQL instead of
+RAG. Fixed by switching to word-boundary regex matching
+(`re.search(rf"\b{re.escape(kw)}\b", q)` per keyword) so "counts" no
+longer matches "count" while "how many orders" and "discounted rate"
+still correctly match "how many" and "rate". Verified against 6 cases
+including the reported false positive and a negative control
+("accounting discrepancies" no longer false-matches "count").
+
+Also confirmed, rather than "fixed," a separate limitation: genuinely
+hybrid questions (e.g. "explain X and how many Y") only get the numeric
+half answered, since `needs_sql()` returns a single boolean and
+`answer()` picks exactly one path (NL2SQL or RAG), never both. This
+matches the TODO already at the top of `chatbot.py` ("support questions
+that need BOTH paths") — it's a known architectural tradeoff of the
+current single-path router, not a regression to patch alongside the
+keyword-matching bug.
+
+**Edit:** None — used as-is.
