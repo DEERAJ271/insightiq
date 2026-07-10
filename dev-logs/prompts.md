@@ -353,3 +353,61 @@ handling built earlier this session only covers SQL that fails to
 execute, not SQL that executes but answers the wrong question.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Guard compose step against hallucinated raw SQL leaking
+
+**Prompt:** "When I ask 'What is the average order value by product
+category?' in the Streamlit app, the output shows raw SQL text
+(SELECT AVG(order_value), product_category FROM data GROUP BY
+product_category;) instead of an actual answer... Trace through
+chatbot.answer() and nl2sql.py to find where this raw SQL string is
+being returned/displayed instead of being executed and replaced with
+real results or a graceful error."
+
+**Output:** Traced both files. Reproduced the exact reported SQL
+directly against `run_query()` and confirmed the existing
+`SQLExecutionError` handling (from the earlier graceful-failure fix)
+already catches it correctly — that specific failure mode was not
+live-reproducible with the current code. While probing further,
+surfaced a second, distinct leak path: the **compose step itself**
+(the Ollama/Anthropic call that turns query results into prose) has no
+output validation at all, and a weak local model can hallucinate a
+SQL-shaped response as its "answer" even when the underlying query
+succeeded — observed this directly in a test run where llama3.2
+produced a rambling, SQL-flavored non-answer instead of prose.
+
+Added `RAW_SQL_PATTERN` in `chatbot.py` (matches a leading
+`SELECT/INSERT/UPDATE/DELETE` keyword) applied to the compose output
+for both backends. On match, logs the leaked question/backend/response
+for debugging and returns the same graceful fallback message instead —
+extracted as a shared `SQL_GENERATION_FAILURE_MESSAGE` constant in
+`nl2sql.py` so both failure paths (execution failure and compose
+hallucination) show identical messaging.
+
+Verified 3 cases via mocking: (1) the original run_query-failure path
+still returns the graceful message, (2) a simulated compose-step
+hallucination of raw SQL is now caught and replaced, (3) a normal prose
+answer passes through unaffected (no false positives). Re-ran
+`nl2sql.py`'s existing smoke tests — unaffected.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Permanent sys.path fix for streamlit_app.py
+
+**Prompt:** "Fix this permanently by adding this to the top of
+app/streamlit_app.py, before any other imports: `import sys` /
+`from pathlib import Path` / `sys.path.insert(0,
+str(Path(__file__).resolve().parent.parent))`. This ensures the
+project root is always on the import path regardless of how streamlit
+is launched, so PYTHONPATH never needs to be set manually again."
+
+**Output:** Added the three lines as specified, before the `streamlit`
+and `llm.chatbot` imports. Verified by stopping and restarting the
+Streamlit server — came back up cleanly and the chat tab still resolved
+`llm.chatbot` correctly.
+
+**Edit:** None — used as-is.
