@@ -1,0 +1,74 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b1c2bd41-3bf3-4e1a-a2bb-e56c6c86eba9",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst output = execSync(\n  '/Users/mako/Downloads/insightiq/venv/bin/python -m etl.run_pipeline',\n  { cwd: '/Users/mako/Downloads/insightiq', encoding: 'utf-8', maxBuffer: 1024 * 1024 * 10 }\n);\nreturn [{ json: { output } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a0f1cec1-b782-4fc2-b931-6097491873c2",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3.2\",\n  \"prompt\": \"Summarize this ETL pipeline run in 2-3 sentences for a stakeholder, highlighting the row counts loaded into each table: {{ JSON.stringify($json.output).slice(1, -1) }}\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "7c8ffa3d-bbc3-4d42-9d27-8988c11b3515",
+      "name": "HTTP Request"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "2d662c9af7941d2bd3e3f17a5f0c492439365f74bad8a77f9c69b61422506df9"
+  }
+}
