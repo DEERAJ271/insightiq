@@ -12,7 +12,7 @@ import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from llm.nl2sql import answer_numeric_question
+from llm.nl2sql import answer_numeric_question, SQLExecutionError
 from rag.query_engine import retrieve_context
 
 load_dotenv()
@@ -38,7 +38,10 @@ def needs_sql(question: str) -> bool:
 
 def answer(question: str) -> str:
     if needs_sql(question):
-        _, df = answer_numeric_question(question)
+        try:
+            _, df = answer_numeric_question(question)
+        except SQLExecutionError as e:
+            return str(e)
         data_summary = df.to_markdown(index=False) if not df.empty else "No rows returned."
         context = f"Query result:\n{data_summary}"
     else:

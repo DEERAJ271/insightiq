@@ -6,14 +6,19 @@ TODO (good Claude Code task): add a validation step that rejects
 non-SELECT statements before execution, and a retry loop that feeds the
 error back to Claude if the generated SQL fails.
 """
+import logging
 import os
 import pandas as pd
 import requests
 from anthropic import Anthropic
+from pandas.errors import DatabaseError
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 client = Anthropic()
 MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5")
@@ -69,12 +74,25 @@ def generate_sql(question: str) -> str:
     return response.content[0].text.strip()
 
 
+class SQLExecutionError(Exception):
+    """Raised when generated SQL fails to execute against the warehouse."""
+
+
 def run_query(sql: str) -> pd.DataFrame:
     if not sql.strip().lower().startswith("select"):
         raise ValueError("Only SELECT statements are allowed.")
     engine = create_engine(DATABASE_URL)
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn)
+    try:
+        with engine.connect() as conn:
+            return pd.read_sql(text(sql), conn)
+    except (SQLAlchemyError, DatabaseError) as e:
+        logger.error("SQL execution failed.\nSQL: %s\nError: %s", sql, e)
+        raise SQLExecutionError(
+            "The generated SQL was invalid. This is a known limitation of "
+            "the local Ollama model (llama3.2) used for zero-cost "
+            "development testing; production Claude generates more "
+            "reliable SQL."
+        ) from e
 
 
 def answer_numeric_question(question: str) -> tuple[str, pd.DataFrame]:
