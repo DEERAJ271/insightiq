@@ -124,3 +124,34 @@ logic). Answer-quality validation still requires the production model.
 > correctness benchmark; final answer quality was validated separately
 > against the production model once each pipeline change was confirmed to
 > run end-to-end.
+
+---
+
+## 2026-07-10 — n8n: fix ETL orchestration workflow end-to-end
+
+**Prompt:** "The etl-orchestration workflow's Code node hangs when it runs
+the pipeline via execSync — debug why `source venv/bin/activate && python -m
+etl.run_pipeline` never returns in n8n."
+
+**Output:** Diagnosed and fixed three separate issues blocking the workflow
+from completing end-to-end:
+
+- `execSync('source venv/bin/activate && python ...')` hung indefinitely —
+  `source` requires an interactive shell context that n8n's non-interactive
+  child process doesn't provide. Fixed by calling the venv's Python binary
+  directly by path instead: `execSync('/path/to/venv/bin/python -m
+  etl.run_pipeline', { cwd: ... })`, skipping activation entirely.
+- n8n's Code node disables Node's `child_process` module by default (a
+  security measure), so `execSync` wasn't available at all until set via
+  `export NODE_FUNCTION_ALLOW_BUILTIN=child_process` before `n8n start`.
+- The HTTP Request node's JSON body broke because the ETL pipeline's raw
+  stdout contains unescaped newlines, which aren't valid inside a JSON
+  string literal. Fixed by sanitizing/escaping the captured stdout before
+  interpolating it into the JSON body (stripping/replacing `\n` or using
+  `JSON.stringify(...).slice(1, -1)`).
+
+Both n8n workflows — `insightiq-data-validation` and
+`insightiq-etl-orchestration` — now run fully end-to-end with local Ollama
+(llama3.2) generating plain-English summaries at each workflow's tail.
+
+**Edit:** None — used as-is.
