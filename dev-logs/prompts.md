@@ -211,3 +211,47 @@ quality comparison (Ollama vs. Claude) is still blocked on adding credits;
 only the routing logic itself was verified.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Gracefully handle failed generated SQL
+
+**Prompt:** "In llm/nl2sql.py's run_query() or answer_numeric_question(),
+catch SQLAlchemy errors from a failed query. On failure, don't crash —
+instead return a graceful message like 'The generated SQL was invalid.
+This is a known limitation of the local Ollama model (llama3.2) used for
+zero-cost development testing; production Claude generates more reliable
+SQL.' Log the failed SQL and error for debugging, but never show a raw
+traceback to the end user in the Streamlit app."
+
+**Output:** `run_query()` in `nl2sql.py` now wraps execution in
+`try/except (SQLAlchemyError, DatabaseError)`, logs the failed SQL and
+error via `logger.error()`, then raises a new `SQLExecutionError` with
+the requested user-facing message. `chatbot.answer()` catches
+`SQLExecutionError` around `answer_numeric_question()` and returns the
+message directly, skipping the LLM compose call entirely since there's
+no data to compose from. Since `streamlit_app.py` just calls
+`chatbot.answer()` and `st.write()`s the result, a failed query now
+surfaces the friendly message instead of a raw traceback in the UI.
+
+Caught a real bug while testing: `pandas.read_sql()` wraps SQLAlchemy
+errors in its own `pandas.errors.DatabaseError`, which is **not** a
+`SQLAlchemyError` subclass (confirmed via `DatabaseError.__mro__` —
+inherits from `OSError`/`Exception`, not `SQLAlchemyError`). Catching
+only `SQLAlchemyError` as the prompt suggested let a real
+`SELECT * FROM nonexistent_table_xyz` failure slip through as an
+unhandled traceback. Fixed by catching both exception types.
+
+Verified: (1) `run_query()` directly against a query on a nonexistent
+table — caught, logged the SQL + error, raised `SQLExecutionError` with
+the friendly message; (2) `chatbot.answer()` with
+`answer_numeric_question` mocked to raise `SQLExecutionError` — returned
+the message directly, no compose call attempted; (3) existing
+`nl2sql.py` `__main__` smoke tests (3 valid queries + non-SELECT
+rejection) still pass unaffected.
+
+**Edit:** Broadened the except clause from `SQLAlchemyError` alone to
+`(SQLAlchemyError, DatabaseError)` after the nonexistent-table test
+proved the first version didn't actually catch the failure it was meant
+to catch — pandas re-wraps the underlying SQLAlchemy exception before it
+reaches `run_query()`'s except block.
