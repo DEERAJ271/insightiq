@@ -284,3 +284,39 @@ current single-path router, not a regression to patch alongside the
 keyword-matching bug.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Re-test 8 questions; found and fixed venv drift breaking RAG
+
+**Prompt:** "test the other 8 questions again in the UI" (re-running the
+same 8 questions from the earlier live-testing session, this time
+through `chatbot.answer()` directly since no browser automation is
+available; then "pip install -r requirements.txt to fix the drift").
+
+**Output:** Routing was 8/8 correct, confirming the `needs_sql()`
+word-boundary fix holds, including both edge cases it targeted ("what
+counts as..." → RAG, "recount the steps..." → RAG). NL2SQL answers were
+1 valid / 4 invalid-but-gracefully-handled (llama3.2 hallucinated tables
+like `dimension_sla` and produced ambiguous/undefined columns — the
+`SQLExecutionError` fallback from the earlier fix returned the friendly
+message instead of crashing, exactly as designed).
+
+All 3 RAG-routed questions crashed with `NameError: name 'nn' is not
+defined`. Root cause: `venv/bin/pip show` revealed `numpy==2.4.6` and
+`sentence-transformers==5.6.0` installed, despite `requirements.txt`
+pinning `numpy<2` and `sentence-transformers<4.0` specifically because
+torch 2.2.2 isn't ABI-compatible with either (the exact scenario the
+2026-07-08 pin comments warn about) — the installed venv had drifted
+from the pins at some point after they were set.
+
+Fixed via `pip install -r requirements.txt`, which downgraded
+`numpy` 2.4.6→1.26.4 and `sentence-transformers` 5.6.0→3.4.1 (pulling
+compatible `transformers`/`huggingface-hub` versions along with it).
+Re-ran all 3 previously-crashing RAG questions — all now return real
+answers (only harmless `HuggingFaceEmbeddings`/`Chroma` import-path
+deprecation warnings remain, not errors).
+
+**Edit:** None — used as-is. `requirements.txt` itself was already
+correct; only the installed venv needed to be brought back in line with
+it.
