@@ -7,14 +7,22 @@ TODO (good Claude Code task): replace the naive keyword router with a
 Claude-based classifier call, and support questions that need BOTH paths
 (e.g. "what's our repeat customer rate, and what counts as repeat?").
 """
+import logging
 import os
 import re
 import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from llm.nl2sql import answer_numeric_question, SQLExecutionError
+from llm.nl2sql import answer_numeric_question, SQLExecutionError, SQL_GENERATION_FAILURE_MESSAGE
 from rag.query_engine import retrieve_context
+
+logger = logging.getLogger(__name__)
+
+# Guards against the compose step itself hallucinating a raw SQL statement
+# instead of a natural-language answer (a separate failure mode from
+# run_query() execution errors, which SQLExecutionError already covers).
+RAW_SQL_PATTERN = re.compile(r"^\s*(select|insert|update|delete)\b", re.IGNORECASE)
 
 load_dotenv()
 
@@ -60,15 +68,25 @@ def answer(question: str) -> str:
             },
         )
         response.raise_for_status()
-        return response.json()["response"].strip()
+        result = response.json()["response"].strip()
+    else:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=600,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        result = response.content[0].text
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=600,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    return response.content[0].text
+    if RAW_SQL_PATTERN.match(result):
+        logger.error(
+            "Compose step returned raw SQL instead of a natural-language "
+            "answer.\nQuestion: %s\nBackend: %s\nResponse: %s",
+            question, LLM_BACKEND, result,
+        )
+        return SQL_GENERATION_FAILURE_MESSAGE
+
+    return result
 
 
 if __name__ == "__main__":

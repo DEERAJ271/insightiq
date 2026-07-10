@@ -74,6 +74,13 @@ def generate_sql(question: str) -> str:
     return response.content[0].text.strip()
 
 
+SQL_GENERATION_FAILURE_MESSAGE = (
+    "The generated SQL was invalid. This is a known limitation of the "
+    "local Ollama model (llama3.2) used for zero-cost development "
+    "testing; production Claude generates more reliable SQL."
+)
+
+
 class SQLExecutionError(Exception):
     """Raised when generated SQL fails to execute against the warehouse."""
 
@@ -87,12 +94,7 @@ def run_query(sql: str) -> pd.DataFrame:
             return pd.read_sql(text(sql), conn)
     except (SQLAlchemyError, DatabaseError) as e:
         logger.error("SQL execution failed.\nSQL: %s\nError: %s", sql, e)
-        raise SQLExecutionError(
-            "The generated SQL was invalid. This is a known limitation of "
-            "the local Ollama model (llama3.2) used for zero-cost "
-            "development testing; production Claude generates more "
-            "reliable SQL."
-        ) from e
+        raise SQLExecutionError(SQL_GENERATION_FAILURE_MESSAGE) from e
 
 
 def answer_numeric_question(question: str) -> tuple[str, pd.DataFrame]:
