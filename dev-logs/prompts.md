@@ -185,3 +185,29 @@ produced valid SQL for "average order value by product category" and
 and returned a real per-category breakdown — zero Anthropic API calls.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Attempted anthropic-backend comparison run (no credits)
+
+**Prompt:** "run the chatbot with LLM_BACKEND=anthropic to compare"
+
+**Output:** `/cost-guard` dry-run check first: single question, no loops,
+`max_tokens` set on both calls (`generate_sql`=500, compose=600), 2 total
+API calls if run — under the 3-call confirmation threshold, but flagged
+that the account had zero credits as of 2026-07-09 and asked before
+spending the account's only test calls on it. Confirmed, then ran
+`LLM_BACKEND=anthropic chatbot.answer(...)` for the same AOV-by-category
+question already answered via Ollama.
+
+**Result:** confirmed `LLM_BACKEND=anthropic` correctly routes to the
+untouched Anthropic code path (traceback shows it reached
+`generate_sql()`'s `client.messages.create()`, not the Ollama branch), but
+the call failed with `anthropic.BadRequestError: 400 invalid_request_error
+— "Your credit balance is too low to access the Anthropic API."` Same
+zero-credit state noted on 2026-07-09, still true today. A rejected
+request isn't billed, so no cost was incurred. Live side-by-side answer
+quality comparison (Ollama vs. Claude) is still blocked on adding credits;
+only the routing logic itself was verified.
+
+**Edit:** None — used as-is.
