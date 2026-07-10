@@ -8,6 +8,7 @@ error back to Claude if the generated SQL fails.
 """
 import os
 import pandas as pd
+import requests
 from anthropic import Anthropic
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
@@ -17,6 +18,12 @@ load_dotenv()
 client = Anthropic()
 MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5")
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# "anthropic" or "ollama" — defaults to ollama so local dev doesn't spend
+# Anthropic credits; set LLM_BACKEND=anthropic when credits are available.
+LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
 SCHEMA_SUMMARY = """
 Tables:
@@ -41,6 +48,18 @@ Rules:
 
 
 def generate_sql(question: str) -> str:
+    if LLM_BACKEND == "ollama":
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": f"{SYSTEM_PROMPT}\n\n{question}",
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["response"].strip()
+
     response = client.messages.create(
         model=MODEL,
         max_tokens=500,
