@@ -155,3 +155,33 @@ Both n8n workflows — `insightiq-data-validation` and
 (llama3.2) generating plain-English summaries at each workflow's tail.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-10 — Add LLM_BACKEND switch to llm/chatbot.py and llm/nl2sql.py
+
+**Prompt:** "Add an LLM_BACKEND env var to llm/chatbot.py and
+llm/nl2sql.py that switches between "anthropic" and "ollama" (calling
+http://127.0.0.1:11434/api/generate with llama3.2 when set to "ollama").
+Default to ollama. Keep the Anthropic code path intact and unchanged for
+when credits are available — just gate which one runs based on the env
+var."
+
+**Output:** Added `LLM_BACKEND` (default `"ollama"`), `OLLAMA_URL`, and
+`OLLAMA_MODEL` env vars to both files. `generate_sql()` in `nl2sql.py` and
+the compose call in `chatbot.py::answer()` now branch on `LLM_BACKEND`:
+`"ollama"` POSTs to `http://127.0.0.1:11434/api/generate` with `llama3.2`
+using the same `SYSTEM_PROMPT`/schema context as the Anthropic path;
+anything else falls through to the original, untouched
+`client.messages.create()` call. Added `requests` and `tabulate` to
+`requirements.txt` (both previously relied on transitively — `tabulate`
+is needed by `df.to_markdown()` in `chatbot.py` and was missing
+entirely) and documented `LLM_BACKEND`/`OLLAMA_URL`/`OLLAMA_MODEL` in
+`.env.example` and `n8n/README.md`.
+
+Verified end-to-end with the default `ollama` backend: `generate_sql()`
+produced valid SQL for "average order value by product category" and
+`chatbot.answer()` ran the full NL2SQL → Postgres → Ollama-compose path
+and returned a real per-category breakdown — zero Anthropic API calls.
+
+**Edit:** None — used as-is.
