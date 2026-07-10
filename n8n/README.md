@@ -36,6 +36,12 @@ disabled by default as a security measure:
   mismatch), port 5544, database insightiq.
 - Ollama used for local LLM calls during development to avoid Anthropic
   API costs; swap the HTTP Request node's target for production.
+- The Python app layer (`llm/chatbot.py`, `llm/nl2sql.py`) mirrors this
+  same choice via an `LLM_BACKEND` env var — `ollama` (default, calls
+  `http://127.0.0.1:11434/api/generate` with `llama3.2`, same as these
+  workflows) or `anthropic` (unchanged Claude code path, once credits are
+  available). n8n's HTTP Request nodes call Ollama directly and aren't
+  affected by this var.
 - ETL pipeline output contains raw newlines that break naive JSON string
   interpolation; either sanitize in the Code node
   (`.replace(/\n/g, ' ')`) or wrap the expression in
