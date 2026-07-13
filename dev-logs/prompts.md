@@ -575,3 +575,25 @@ Also add a print statement showing `df.dtypes` right after the
 non-numeric/NULL-tainted values no longer raise on `.round()`.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Commit data validation DAG and image build changes
+
+**Prompt:** "yes, commit those too" (referring to pre-existing, not
+Claude-authored, uncommitted changes found while committing the
+category-summary DAG fix: a modified `airflow/docker-compose.yaml` and
+two untracked files).
+
+**Output:** Reviewed the three files before staging (checked for
+secrets, matching the ongoing audit) — all clean. Committed
+`airflow/dags/insightiq_data_validation_dag.py` (null foreign-key,
+duplicate order-product, review-score-range, and freight-outlier
+checks against `fact_orders`), `airflow/requirements.txt` (pandas,
+sqlalchemy, psycopg2-binary, python-dotenv, great-expectations), and
+the `airflow/docker-compose.yaml` change that builds the Airflow image
+inline with `requirements.txt` installed, so both the validation DAG
+and the category summary DAG have their pandas dependency available at
+runtime.
+
+**Edit:** None — used as-is.
