@@ -429,3 +429,32 @@ alone wasn't enough and required a full volume reset (`docker compose down
 `>>`), verified via the Graph view and task logs in the Airflow UI.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Rotate Airflow fernet_key and secret_key
+
+**Prompt:** "rotate the fernet_key and secret_key just in case" (after
+confirming `airflow/config/airflow.cfg` had never been committed to
+git history).
+
+**Output:** Generated a new `fernet_key` (via
+`cryptography.fernet.Fernet.generate_key()`) and `secret_key` (via
+`secrets.token_urlsafe`) and wrote them into the local
+`airflow/config/airflow.cfg`. While rotating, discovered that file
+isn't actually wired into the running stack: no `airflow.cfg` exists
+inside the containers at all, and `docker-compose.yaml` reads
+`AIRFLOW__CORE__FERNET_KEY` from `${FERNET_KEY}` in `airflow/.env`,
+which only had `AIRFLOW_UID` set — so connection-password encryption
+was silently off in the live containers regardless of what was in the
+local cfg file.
+
+Added `FERNET_KEY=<new key>` to `airflow/.env` (gitignored) and ran
+`docker compose down` / `up -d` (no `-v`, so metadata/DAG history was
+preserved) to pick it up. Verified via `docker exec ... printenv` that
+`AIRFLOW__CORE__FERNET_KEY` is now live inside the scheduler container
+with the new key, and all 7 services (`postgres`, `redis`,
+`airflow-init`, `scheduler`, `dag-processor`, `apiserver`, `triggerer`,
+`worker`) came back healthy.
+
+**Edit:** None — used as-is.
