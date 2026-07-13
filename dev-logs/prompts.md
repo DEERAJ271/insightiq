@@ -533,3 +533,23 @@ This closes out the full-codebase secrets sweep — `airflow`, `etl`,
 `llm`, `app`, and `rag` have now all been audited and are clean.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Audit sql and tests directories for hardcoded secrets
+
+**Prompt:** "check the sql and tests directories too."
+
+**Output:** Grepped both directories for the same set of patterns
+(API-key formats, password/secret assignments, connection strings,
+auth headers). No hardcoded secrets found — `sql/schema.sql` and
+`sql/analytical_queries.sql` are pure DDL/queries with no connection
+strings or credentials, and `tests/test_transform.py` doesn't touch
+the database or any credentials at all (no `getenv`, `environ`, or
+`connect()` calls).
+
+Extends the full-codebase secrets sweep — `airflow`, `etl`, `llm`,
+`app`, `rag`, `sql`, and `tests` have now all been audited and are
+clean.
+
+**Edit:** None — used as-is.
