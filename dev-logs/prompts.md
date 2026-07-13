@@ -491,3 +491,23 @@ both to the user; decided to leave as-is since the file is gitignored
 and the Postgres instance is local-only.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Audit etl and llm directories for hardcoded secrets
+
+**Prompt:** "check the etl and llm directories for hardcoded secrets
+too."
+
+**Output:** Grepped both directories for API-key patterns, password/
+secret assignments, connection strings, and auth headers. No hardcoded
+secrets found — `CLAUDE_MODEL`, `LLM_BACKEND`, `OLLAMA_URL`,
+`OLLAMA_MODEL`, and `DATABASE_URL` in `llm/chatbot.py` and
+`llm/nl2sql.py` are all pulled via `os.getenv(...)`. The one literal
+match, `etl/load.py:14`'s `os.getenv("DATABASE_URL",
+"postgresql://postgres:postgres@localhost:5432/insightiq")`, is just
+the same local-dev fallback default already documented in
+`.env.example`, not a real secret, and only used when `DATABASE_URL`
+isn't set.
+
+**Edit:** None — used as-is.
