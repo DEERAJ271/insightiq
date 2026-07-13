@@ -597,3 +597,24 @@ and the category summary DAG have their pandas dependency available at
 runtime.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Pin airflow/requirements.txt versions
+
+**Prompt:** "check the airflow requirements.txt for pinned versions"
+followed by "yes, align it with the root file's versions" and "yes,
+rebuild and commit it."
+
+**Output:** Found `airflow/requirements.txt`'s 5 packages (pandas,
+sqlalchemy, psycopg2-binary, python-dotenv, great-expectations) were
+all unpinned, unlike the root `requirements.txt` which pins the same
+packages with version floors and explanatory comments. Aligned
+`airflow/requirements.txt` to the same floors (`pandas>=2.2`,
+`sqlalchemy>=2.0`, `psycopg2-binary>=2.9`, `python-dotenv>=1.0`,
+`great-expectations>=0.18`). Ran `docker compose build` to verify —
+all 6 services (`scheduler`, `worker`, `triggerer`, `apiserver`,
+`dag-processor`, `init`) built cleanly; already-installed versions in
+the base image satisfied every new floor.
+
+**Edit:** None — used as-is.
