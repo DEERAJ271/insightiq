@@ -553,3 +553,25 @@ Extends the full-codebase secrets sweep — `airflow`, `etl`, `llm`,
 clean.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Fix TypeError in insightiq_category_summary_dag.py
+
+**Prompt:** "Fix the TypeError in
+dags/insightiq_category_summary_dag.py line 36 — 'Expected numeric
+dtype, got object instead' on `.round()`. This happens in the groupby
+aggregation step. Before calling `.round()`, explicitly cast the
+relevant columns (avg_price, avg_freight, avg_review_score) to numeric
+using `pd.to_numeric(..., errors='coerce')` to handle any non-numeric
+or NULL values that might be causing pandas to infer an object dtype.
+Also add a print statement showing `df.dtypes` right after the
+`read_sql()` call so future debugging is faster."
+
+**Output:** In `airflow/dags/insightiq_category_summary_dag.py`, added
+`print(df.dtypes)` immediately after the `read_sql()` call, and wrapped
+`avg_price`, `avg_freight`, and `avg_review_score` in
+`pd.to_numeric(..., errors="coerce")` before each `.round(2)` call so
+non-numeric/NULL-tainted values no longer raise on `.round()`.
+
+**Edit:** None — used as-is.
