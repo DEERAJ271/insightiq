@@ -411,3 +411,21 @@ Streamlit server — came back up cleanly and the chat tab still resolved
 `llm.chatbot` correctly.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Set up Apache Airflow 3.3.0 via Docker Compose
+
+**Prompt:** Set up Apache Airflow 3.3.0 via Docker Compose alongside
+the existing n8n/Postgres/Ollama stack.
+
+**Output:** Added `airflow/docker-compose.yaml` and a `hello_world_dag.py`
+under `airflow/dags/`. Set `AIRFLOW__CORE__LOAD_EXAMPLES` (`LOAD_EXAMPLES`)
+to `false` to disable the 115 default example DAGs — since they'd already
+been loaded into the metadata database on first boot, disabling the flag
+alone wasn't enough and required a full volume reset (`docker compose down
+-v`) to take effect. Confirmed working end-to-end with a two-task
+`hello_world` DAG (BashOperator tasks with an explicit dependency via
+`>>`), verified via the Graph view and task logs in the Airflow UI.
+
+**Edit:** None — used as-is.
