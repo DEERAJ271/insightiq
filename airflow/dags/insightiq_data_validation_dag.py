@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.operators.python import PythonOperator
 from datetime import datetime
+from dags.utils.alerting import notify_failure
 
 CONN_ID = "insightiq_postgres"
 
@@ -11,6 +12,7 @@ with DAG(
     schedule="@daily",
     catchup=False,
     tags=["insightiq", "validation"],
+    default_args={"on_failure_callback": notify_failure},
 ) as dag:
 
     def check_null_foreign_keys(**context):
