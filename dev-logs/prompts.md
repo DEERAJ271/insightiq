@@ -511,3 +511,25 @@ the same local-dev fallback default already documented in
 isn't set.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Audit app and rag directories for hardcoded secrets
+
+**Prompt:** "check the app and rag directories for hardcoded secrets
+too."
+
+**Output:** Grepped both directories for the same set of patterns
+(API-key formats, password/secret assignments, connection strings,
+auth headers). No hardcoded secrets found — `app/streamlit_app.py` is
+just the `sys.path` fix plus Streamlit UI wiring, no credentials at
+all. `rag/query_engine.py` and `rag/build_index.py` pull
+`CHROMA_PERSIST_DIR` and `DATABASE_URL` via `os.getenv(...)`; the one
+literal match, `rag/build_index.py:24`'s fallback
+`postgresql://postgres:postgres@localhost:5432/insightiq`, is the same
+local-dev default already flagged in `etl/load.py`, not a real secret.
+
+This closes out the full-codebase secrets sweep — `airflow`, `etl`,
+`llm`, `app`, and `rag` have now all been audited and are clean.
+
+**Edit:** None — used as-is.
