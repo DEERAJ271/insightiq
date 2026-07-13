@@ -724,3 +724,38 @@ Reverted the query back to `fact_orders` and re-ran the task — passes
 cleanly with no alert.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Add pytest-based DAG integrity tests
+
+**Prompt:** "added pytest-based DAG integrity tests run via DagBag
+inside the Airflow worker container (required adding a tests/ volume
+mount to docker-compose.yaml and pytest to requirements.txt). Fixed a
+DagBag API signature change in Airflow 3.x — include_examples parameter
+was removed, example loading is now config-only via
+AIRFLOW__CORE__LOAD_EXAMPLES. All 6 tests pass: no import errors,
+expected DAGs present, correct tagging, no cycles, and expected task
+structure in insightiq_data_validation."
+
+**Output:** Added `airflow/tests/test_dag_integrity.py`, running
+`DagBag(dag_folder="dags/")` against all DAG files inside the Airflow
+containers. Required adding `pytest` to `airflow/requirements.txt` and
+a `tests/` volume mount (`${AIRFLOW_PROJ_DIR:-.}/tests:/opt/airflow/tests`)
+to `docker-compose.yaml`. Fixed a `DagBag` API signature change in
+Airflow 3.x — the `include_examples` parameter was removed; example DAG
+loading is now controlled entirely via the
+`AIRFLOW__CORE__LOAD_EXAMPLES` config/env var instead. Also updated all
+4 DAG files to import `PythonOperator`/`BashOperator` from
+`airflow.providers.standard.operators.*` instead of the deprecated
+`airflow.operators.*` paths.
+
+Verified via `pytest tests/` inside the scheduler container — all 6
+tests pass: no import errors, expected DAGs present
+(`hello_world`, `insightiq_data_validation`, `insightiq_category_summary`,
+`insightiq_category_deep_dive`), correct tagging, no cycles, and the
+expected task structure in `insightiq_data_validation`. Also ran with
+`-W error::DeprecationWarning` to confirm no deprecation warnings
+remain after the operator import fix.
+
+**Edit:** None — used as-is.
