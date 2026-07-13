@@ -11,3 +11,6 @@ rag/chroma_store/
 .DS_Store
 .pytest_cache/
 scratch_*.py
+airflow/logs/
+airflow/plugins/
+airflow/.env
