@@ -458,3 +458,36 @@ with the new key, and all 7 services (`postgres`, `redis`,
 `worker`) came back healthy.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Audit webserver_config, Postgres, and n8n configs for secrets
+
+**Prompt:** "check the webserver_config.py for any hardcoded secrets
+too" followed by "check the postgres and n8n configs for hardcoded
+secrets too."
+
+**Output:** No `webserver_config.py` exists locally or inside the
+running Airflow containers — Airflow never generated one for this
+setup, and the FAB auth manager's `secret_key` is already sourced from
+`airflow.cfg`/env (rotated in the previous entry). The only match
+anywhere in the containers was Airflow's own shipped
+`default_webserver_config.py` template, which contains only commented-out
+placeholder lines, not live credentials.
+
+There's no dedicated Postgres or n8n docker-compose/config file in the
+repo — n8n is represented only by two exported workflow JSONs under
+`n8n/workflows/`, and the sole compose file in the project is
+`airflow/docker-compose.yaml` (already audited). Grepped the workflow
+JSONs for passwords/keys/tokens/connection strings — clean; the one
+`credentials` block found is just an n8n internal credential-store
+reference (id/name), not an embedded secret.
+
+The root `.env` (gitignored, confirmed never committed via full git
+history search) does contain a live `ANTHROPIC_API_KEY` and a
+default/weak local Postgres credential
+(`postgresql://postgres:postgres@localhost:5544/insightiq`). Flagged
+both to the user; decided to leave as-is since the file is gitignored
+and the Postgres instance is local-only.
+
+**Edit:** None — used as-is.
