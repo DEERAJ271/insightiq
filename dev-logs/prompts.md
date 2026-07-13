@@ -759,3 +759,24 @@ expected task structure in `insightiq_data_validation`. Also ran with
 remain after the operator import fix.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Check remaining DAGs for deprecated imports
+
+**Prompt:** "check the other DAGs for any remaining deprecated
+imports."
+
+**Output:** Grepped all import lines across the 4 DAG files.
+`PostgresHook` already used the correct
+`airflow.providers.postgres.hooks.postgres` path, and
+`PythonOperator`/`BashOperator` were already fixed to
+`airflow.providers.standard.operators.*` in the previous entry — no
+other legacy paths (`airflow.contrib.*`, `airflow.operators.dummy`,
+`airflow.hooks.postgres_hook`, etc.) found anywhere. Confirmed by
+loading a `DagBag` over `dags/` inside the scheduler container under
+`-W error::DeprecationWarning` — zero import errors, all 4 DAGs
+(`hello_world`, `insightiq_data_validation`, `insightiq_category_summary`,
+`insightiq_category_deep_dive`) load cleanly. No changes needed.
+
+**Edit:** None — used as-is.
