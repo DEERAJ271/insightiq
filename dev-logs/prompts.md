@@ -685,3 +685,42 @@ The earlier `pd.to_numeric` coercion was left in place as a harmless
 defensive cast.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Add LLM-generated failure alerts to data validation DAG
+
+**Prompt:** "Add on_failure_callback=notify_failure (imported from
+dags.utils.alerting) to the default_args of
+dags/insightiq_data_validation_dag.py, so any task failure triggers an
+LLM-generated alert summary printed to the task log. Test it by
+temporarily changing one check (e.g. check_null_foreign_keys) to query
+a nonexistent table like 'nonexistent_table_xyz' to force a real
+failure, verify the alert prints in the task logs, then revert the
+query back to fact_orders."
+
+**Output:** `dags/utils/alerting.py` (a `notify_failure(context)` that
+calls the local Ollama instance for a 1-2 sentence summary, with a
+fallback message if unreachable) already existed. Added
+`default_args={"on_failure_callback": notify_failure}` to
+`insightiq_data_validation_dag.py` and imported it via `from
+dags.utils.alerting import notify_failure`, exactly as specified.
+
+That exact import failed at real DAG-parse time
+(`ModuleNotFoundError: No module named 'dags'`) — it only worked in an
+interactive `python3 -c` check because that implicitly adds cwd to
+`sys.path`; Airflow's actual DAG processor only adds the DAG file's own
+directory, not its parent. Fixed at the environment level rather than
+changing the import: added `PYTHONPATH: '/opt/airflow'` to
+`docker-compose.yaml`'s `airflow-common-env` and recreated the
+containers, so `dags.utils.alerting` resolves as intended.
+
+Forced a real failure by pointing `check_null_foreign_keys` at
+`nonexistent_table_xyz` and ran `airflow tasks test`. First attempt hit
+an Ollama cold-start timeout and fell back to the existing error
+message; confirmed Ollama was reachable locally, retried, and got a
+real LLM-generated alert correctly diagnosing the missing table.
+Reverted the query back to `fact_orders` and re-ran the task — passes
+cleanly with no alert.
+
+**Edit:** None — used as-is.
