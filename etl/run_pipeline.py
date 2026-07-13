@@ -50,7 +50,7 @@ def main():
     ])
     dim_date = build_dim_date(all_dates.min(), all_dates.max())
 
-    fact = build_fact_orders(orders, raw["order_items"], dim_customer, dim_product, dim_seller)
+    fact = build_fact_orders(orders, raw["order_items"], dim_customer, dim_product, dim_seller, raw["reviews"])
 
     print("Loading...")
     load_table(dim_date,     "dim_date",     if_exists="append")

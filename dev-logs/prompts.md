@@ -618,3 +618,70 @@ all 6 services (`scheduler`, `worker`, `triggerer`, `apiserver`,
 the base image satisfied every new floor.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Check root requirements.txt for pinned versions
+
+**Prompt:** "check the requirements.txt for the rest of the project."
+
+**Output:** Confirmed only two `requirements.txt` files exist in the
+project — the root one and `airflow/requirements.txt` (just fixed in
+the previous entry). The root file was already in good shape: all 21
+packages have a version floor (`>=`), and two carry documented upper
+bounds — `numpy>=1.26,<2` (avoids an `_ARRAY_API` import error from a
+NumPy 2.x/torch ABI mismatch) and `sentence-transformers>=3.0,<4.0`
+(torch>=2.4, required by 4.x, has no wheel for Python 3.11 on x86_64
+macOS). No unpinned packages found; no changes needed.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 — Fix category_summary NULL avg_review_score
+
+**Prompt:** "The category_summary table has NULL avg_review_score for
+every row. The earlier fix used pd.to_numeric(errors='coerce') which
+likely converted problematic values to NaN instead of preserving valid
+scores. Check what review_score actually contains in fact_orders (run
+the diagnostic query first), then fix the aggregation so
+avg_review_score correctly computes the mean of valid (non-null)
+review scores, using .mean(skipna=True) rather than losing all values
+to a blanket coercion."
+
+**Output:** Ran the diagnostic query first, per the instruction, and
+it overturned the premise: `fact_orders.review_score` was `NULL` for
+all 102,425 rows already, at the Postgres level, before pandas ever
+touched it. The `pd.to_numeric(errors='coerce')` fix from the earlier
+entry wasn't the cause — `.mean(skipna=True)` on an all-null column is
+still `NaN` regardless of aggregation method.
+
+Traced the real root cause to `etl/transform.py`, which hardcoded
+`fact["review_score"] = None` for every row with a comment noting it
+was a placeholder "to be filled by a later enrichment step" that was
+never built — even though `data/raw/olist_order_reviews_dataset.csv`
+has real scores (mean ~4.09, 0 nulls) and was already being extracted
+into a `"reviews"` key by `etl/extract.py`, just never joined in.
+
+Presented this finding to the user (via AskUserQuestion) instead of
+applying the originally-requested DAG-only fix, since it wouldn't have
+changed anything. User chose to fix the ETL join now. Updated
+`build_fact_orders()` in `etl/transform.py` to accept a `reviews`
+dataframe and left-join `review_score` by `order_id`. Found 551 orders
+have multiple review submissions with genuinely different scores
+(resubmissions) — averaging them would produce fractional values that
+don't fit the `SMALLINT` schema column, so kept the most recent
+submission per order_id (by `review_creation_date`, tie-broken by
+`review_answer_timestamp`) instead. Updated `etl/run_pipeline.py` to
+pass `raw["reviews"]` through.
+
+Re-ran the full ETL pipeline (`python -m etl.run_pipeline`) — 102,425
+fact rows reloaded, 101,628 now have a non-null review_score (mean
+4.08). Re-ran the `category_summary` DAG task directly (`airflow tasks
+test insightiq_category_summary build_category_summary`) inside the
+scheduler container and confirmed all 73 category rows in
+`category_summary` now have a valid `avg_review_score` — zero NULLs.
+The earlier `pd.to_numeric` coercion was left in place as a harmless
+defensive cast.
+
+**Edit:** None — used as-is.

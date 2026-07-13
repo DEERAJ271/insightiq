@@ -99,6 +99,7 @@ def build_fact_orders(
     dim_customer: pd.DataFrame,
     dim_product: pd.DataFrame,
     dim_seller: pd.DataFrame,
+    reviews: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Join raw order + item data with dimension surrogate keys → fact_orders.
 
@@ -107,10 +108,14 @@ def build_fact_orders(
     dim_customer    : dim_customer with customer_key column (from DB or serial)
     dim_product     : dim_product with product_key column
     dim_seller      : dim_seller with seller_key column
+    reviews         : raw olist_order_reviews_dataset, or None to leave
+                      review_score as NULL
 
-    payment_type, payment_installments, review_score are not present in these
-    five source files; they are left as NaN to be filled by a later enrichment
-    step (olist_order_payments / olist_order_reviews datasets).
+    payment_type and payment_installments are not present in these five
+    source files; they are left as NaN to be filled by a later enrichment
+    step (olist_order_payments dataset). review_score comes from `reviews`
+    when supplied; some orders have more than one review submission (e.g.
+    resubmitted reviews), so the most recent one per order_id is kept.
     """
     # --- aggregate order_items to one row per (order_id, product_id, seller_id) ---
     # item_count captures how many line-item rows collapsed into this fact row.
@@ -149,12 +154,25 @@ def build_fact_orders(
     fact["delivered_date_key"] = to_date_key(fact["order_delivered_customer_date"])
     fact["estimated_date_key"] = to_date_key(fact["order_estimated_delivery_date"])
 
-    # --- placeholder columns filled by later enrichment ---
-    # MAX used so a single non-null value survives if these are ever pre-joined
-    # before this function is called (currently always None).
+    # --- payment fields: placeholder, filled by a later enrichment step ---
     fact["payment_type"] = None
     fact["payment_installments"] = None
-    fact["review_score"] = None
+
+    # --- review_score: keep the most recent submission per order_id ---
+    # review_score is SMALLINT, and some orders have more than one review
+    # submission with genuinely different scores (resubmissions), so we take
+    # the latest by review_creation_date (tie-broken by review_answer_timestamp)
+    # rather than averaging, which would produce non-integer values.
+    if reviews is not None:
+        r = reviews.copy()
+        r["review_creation_date"] = pd.to_datetime(r["review_creation_date"], errors="coerce")
+        r["review_answer_timestamp"] = pd.to_datetime(r["review_answer_timestamp"], errors="coerce")
+        r["review_score"] = pd.to_numeric(r["review_score"], errors="coerce")
+        r = r.sort_values(["review_creation_date", "review_answer_timestamp"])
+        reviews_latest = r.drop_duplicates(subset="order_id", keep="last")[["order_id", "review_score"]]
+        fact = fact.merge(reviews_latest, on="order_id", how="left")
+    else:
+        fact["review_score"] = None
 
     return fact[[
         "order_id",
