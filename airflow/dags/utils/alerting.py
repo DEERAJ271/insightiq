@@ -15,7 +15,7 @@ def notify_failure(context):
         response = requests.post(
             "http://host.docker.internal:11434/api/generate",
             json={"model": "llama3.2", "prompt": prompt, "stream": False},
-            timeout=15,
+            timeout=30,
         )
         summary = response.json().get("response", "No summary available")
     except Exception as e:
