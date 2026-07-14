@@ -2,7 +2,7 @@
 
 Local Apache Airflow 3.3.0 via Docker Compose (CeleryExecutor, Redis,
 Postgres-backed metadata db), running alongside InsightIQ's own Postgres
-warehouse and the n8n automation layer (see `n8n/README.md`). 7 DAGs, each
+warehouse and the n8n automation layer (see `n8n/README.md`). 8 DAGs, each
 demonstrating a distinct orchestration pattern rather than all doing the
 same kind of work.
 
@@ -107,6 +107,37 @@ the `>=0.18` floor in `requirements.txt`. Prints a `[PASS]`/`[FAIL]` line
 per expectation with the unexpected/total count, and raises if any
 expectation fails — every expectation here is a hard gate, unlike
 `insightiq_data_validation`'s freight-outlier check, which only warns.
+
+### 8. `insightiq_rfm_segmentation` — customer segmentation
+
+Computes per-customer Recency/Frequency/Monetary scores from
+`fact_orders` + `dim_date` and writes `customer_rfm_segments`. Runs
+`@weekly`.
+
+- **Recency**: days since each customer's last order, relative to the
+  most recent order date in the dataset (historical data, not a live
+  feed).
+- **Frequency**: total items purchased (`SUM(item_count)`) — **not**
+  distinct order count, which has zero variance in this dataset (every
+  `customer_key` here has exactly one order; `customer_id` is
+  effectively order-scoped, not a persistent shopper ID). Scored via a
+  direct capped value (1 item → 1, ..., 5+ items → 5) rather than
+  `pd.qcut`, after verifying that both plain quintile binning (fails
+  outright — the data is ~90% single-item orders, so the 25th/50th/75th
+  percentiles are all 1) and rank-based quintile binning (technically
+  produces 5 balanced bins, but 4 of them turn out to be
+  indistinguishable, fabricating differentiation from arbitrary tie
+  order) were the wrong tool for this specific skew.
+- **Monetary**: total price spent, scored via `pd.qcut` same as recency.
+
+`r_score`/`f_score`/`m_score` (1-5, 5=best) combine into an
+`rfm_segment` string (e.g. `"555"`) and map to one of the standard
+11 RFM segment labels (Champions, Loyal Customers, Potential
+Loyalists, New Customers, Promising, Needs Attention, About to Sleep,
+At Risk, Can't Lose Them, Hibernating, Lost) plus an `"Other"`
+catch-all for any `(r, f, m)` combination the 11 rules don't cover —
+see `label_segment()`'s docstring in the DAG file for the exact
+thresholds and ordering.
 
 ## Airflow Connection setup
 
