@@ -946,3 +946,80 @@ task structure), confirming every DAG still parses cleanly with the
 added `doc_md` and `execution_timeout` kwargs.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-13 to 2026-07-14 — Airflow build, two-day summary
+
+**Scope:** Stood up Apache Airflow 3.3.0 via Docker Compose alongside the
+existing n8n/Postgres/Ollama stack and built out 6 DAGs, each
+demonstrating a distinct orchestration pattern rather than duplicating
+the same kind of task:
+
+- `hello_world` — proof of concept confirming the Compose stack itself
+  works.
+- `insightiq_data_validation` — 4 independent checks (null FKs,
+  duplicate order-product rows, review-score range, freight outliers)
+  run in parallel with results pushed to XCom.
+- `insightiq_category_summary` — pandas transformation (groupby
+  aggregation over `fact_orders`/`dim_product`, written back via
+  `to_sql`).
+- `insightiq_category_deep_dive` — dynamic task mapping,
+  `PythonOperator.partial(...).expand(...)` over a runtime-determined
+  list of top categories.
+- `insightiq_sensor_demo` — `PythonSensor` in `mode="reschedule"`,
+  demonstrating the poll/release pattern that avoids starving other DAGs
+  of worker slots.
+- `insightiq_real_etl` — the real pipeline, the first DAG to call the
+  project's actual `etl/` package instead of reimplementing it, ending
+  in a `TriggerDagRunOperator` that chains into
+  `insightiq_data_validation` as its own DagRun.
+
+Added `tests/test_dag_integrity.py` (`DagBag`-based: import errors, DAG
+presence, tagging, no cycles, failure-alerting wiring, task structure) —
+10 tests passing by the end of the two days. Wired LLM-based failure
+alerting (`dags/utils/alerting.py::notify_failure`, calling local
+Ollama for a 1-2 sentence plain-English alert) onto every DAG handling
+real data, reusing the same Ollama-summary pattern already proven out in
+the n8n workflows rather than inventing a second alerting approach.
+Closed out with `airflow/README.md`, documenting all 6 DAGs, the
+`insightiq_postgres` Connection setup, the `host.docker.internal`
+container-networking pattern, and known limitations honestly (unused
+`great-expectations` dependency, alerting that only reaches task logs
+rather than a real notification channel, fire-and-forget DAG triggering).
+
+**Real bugs found and fixed along the way, not just features added:**
+
+- **Recurring stopped-Postgres-container issue (3 occurrences across the
+  two days).** The project's Postgres container kept coming up stopped,
+  breaking any DAG that touched `insightiq_postgres`. Worked around each
+  time by restarting it; root cause suspected to be the Mac's sleep
+  behavior bypassing Docker's `unless-stopped` restart policy, flagged
+  as worth a dedicated investigation rather than patched blindly three
+  times.
+- **`pd.to_numeric(errors="coerce")` masked a deeper issue.** A
+  `TypeError` on `.round()` in `insightiq_category_summary` was first
+  patched by coercing to numeric before rounding — which fixed the
+  crash but not the actual problem: `avg_review_score` was `NULL` for
+  every row. Chasing that down (rather than accepting the coercion fix
+  as sufficient) surfaced the real bug below.
+- **Root-cause missing join in `etl/transform.py`.** `fact_orders.review_score`
+  was hardcoded to `None` for all 102,425 rows, per a comment noting it
+  was a placeholder "to be filled by a later enrichment step" that was
+  never built — even though the real review scores were already being
+  extracted from `olist_order_reviews_dataset.csv` and just never joined
+  in. Fixed by joining `reviews` into `build_fact_orders()` (most-recent
+  submission per `order_id` for the 551 orders with multiple reviews),
+  which corrected `avg_review_score` warehouse-wide, not just in the one
+  DAG that surfaced it.
+- **`DATABASE_URL` host-resolution mismatch, host vs. container.**
+  `etl.load.get_engine()` reads `DATABASE_URL` from `.env`
+  (`localhost:5544`), correct when running the ETL pipeline on the host
+  but wrong inside the Airflow containers, where `localhost` resolves to
+  the container itself. Fixed in `insightiq_real_etl_dag.py`'s
+  `transform_task` by overriding `DATABASE_URL` to
+  `host.docker.internal:5544` before any `etl.*` module is imported —
+  documented in `airflow/README.md` as a networking gotcha rather than
+  left as a one-off code comment.
+
+**Edit:** None — used as-is.
