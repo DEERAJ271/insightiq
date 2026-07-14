@@ -86,3 +86,13 @@ def test_validation_dag_has_expected_tasks(dagbag):
         "check_freight_outliers",
     }
     assert expected.issubset(task_ids), f"Missing tasks: {expected - task_ids}"
+
+
+def test_ge_validation_dag_present_and_loads(dagbag):
+    assert "insightiq_ge_validation" in dagbag.dags, (
+        "insightiq_ge_validation DAG not found"
+    )
+    assert "insightiq_ge_validation" not in dagbag.import_errors, (
+        f"insightiq_ge_validation failed to import: "
+        f"{dagbag.import_errors.get('insightiq_ge_validation')}"
+    )

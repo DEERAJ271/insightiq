@@ -1023,3 +1023,62 @@ rather than a real notification channel, fire-and-forget DAG triggering).
   left as a one-off code comment.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Add Great Expectations validation DAG
+
+**Prompt:** "Create `airflow/dags/insightiq_ge_validation_dag.py` using
+the `great_expectations` library (already pinned in `requirements.txt`)
+to run a lightweight expectation suite against `fact_orders` — read via
+`PostgresHook.get_sqlalchemy_engine()` + pandas, then use GE's pandas
+dataset API (not a full GE project/checkpoint) to check not-null on
+`customer_key`/`product_key`, a 1-5 range on `review_score` (mostly_pct
+tolerant of legitimate nulls), `price >= 0`, and `item_count >= 1`.
+Print a pass/fail summary per expectation, raise if any hard expectation
+fails, wire `on_failure_callback=notify_failure`, add `doc_md`, and add
+a `test_dag_integrity.py` test confirming the DAG loads."
+
+**Output:** Before writing any code, checked the actually-installed
+`great_expectations` version inside the worker container — **1.18.2**,
+not the `>=0.18` floor in `requirements.txt` suggested. The classic
+`PandasDataset`/`ge.from_pandas()` API the prompt asked for was removed
+from the library well before 1.18.2; importing `great_expectations.dataset`
+fails outright (`No module named 'great_expectations.dataset'`).
+
+Used the closest current equivalent instead: GX's ephemeral-context API
+(`gx.get_context(mode="ephemeral")` → `data_sources.add_pandas()` →
+`add_dataframe_asset()` → `add_batch_definition_whole_dataframe()` →
+`batch.validate(expectation)`), which is still "lightweight" in the
+sense the prompt meant — no persisted `great_expectations/` project
+directory, Datasource YAML, or Checkpoint config, just an in-memory
+context wrapping the DataFrame for the task's duration — just a
+different call shape than the removed shortcut. Verified the exact
+result-object shape (`result.success`, `result.result["unexpected_count"]`,
+`result.result["element_count"]`) and that `mostly=0.95` behaves as
+expected (nulls excluded entirely from the check; only non-null
+out-of-range values count against the tolerance) by running both against
+small hand-built DataFrames in the container before writing the real DAG.
+
+Built `run_ge_expectations()` with all 5 requested checks, printing a
+`[PASS]`/`[FAIL]` line per expectation with the unexpected/total count,
+and raising `ValueError` listing every failed expectation label if any
+failed — all 5 are treated as hard gates here, unlike
+`insightiq_data_validation`'s freight-outlier check, which only warns.
+Added `on_failure_callback=notify_failure`, `schedule=None`, and a
+`doc_md` explaining this DAG as the GE-based counterpart to
+`insightiq_data_validation`'s hand-written SQL checks, including the
+`PandasDataset`-removal note so a future reader isn't confused by the
+API shape.
+
+Verified two ways: `airflow dags test insightiq_ge_validation
+<date>` against the real 102,425-row `fact_orders` table — all 5
+expectations passed (`customer_key`/`product_key` not null,
+`review_score` in range at 95%+, `price >= 0`, `item_count >= 1`) — and
+`pytest tests/ -v` inside the worker container, 11/11 passing including
+the new `test_ge_validation_dag_present_and_loads`.
+
+**Edit:** None — used as-is. The API substitution (ephemeral context
+instead of `PandasDataset`) was a necessary correction, not a stylistic
+choice — the originally-requested API doesn't exist in the pinned
+library version.
