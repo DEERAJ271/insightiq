@@ -780,3 +780,49 @@ loading a `DagBag` over `dags/` inside the scheduler container under
 `insightiq_category_deep_dive`) load cleanly. No changes needed.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Add real ETL DAG and fix its DATABASE_URL inside Docker
+
+**Prompt:** "Create `airflow/dags/insightiq_real_etl_dag.py` with 4
+PythonOperator tasks (extract, transform+load, validate, LLM summary),
+`extract_task` returning only row counts via XCom since DataFrames are
+too large for it, `on_failure_callback=notify_failure`, `schedule=None`,
+and tags `["insightiq", "etl", "real-pipeline"]`. Then, after a real run
+failed with 'Connection refused' on `localhost:5544`: `transform_task`
+calls `etl.load.get_engine()`, which reads `DATABASE_URL` from `.env` —
+correctly `localhost:5544` for running outside Docker, but wrong inside
+the Airflow containers where `localhost` refers to the container
+itself. Fix by setting `DATABASE_URL` explicitly inside `transform_task`
+before calling any `etl` functions, pointing at
+`host.docker.internal:5544`."
+
+**Output:** Added the DAG with `extract_task` (calls
+`etl.extract.extract_all()`, returns only `{name: row_count}` via
+XCom) and `transform_task` (re-extracts, since DataFrames can't cross
+the XCom boundary, then runs `etl.transform` + `etl.load` in the same
+task since those cleaned DataFrames never need to leave it, reusing
+`_assign_key`/`_truncate_all` from `etl/run_pipeline.py`).
+`validate_task` mirrors the row-count and orphaned-FK checks from
+`insightiq_data_validation_dag.py` via `PostgresHook`. `summary_task`
+calls Ollama the same way `dags/utils/alerting.py` does, summarizing
+extract vs. loaded counts pulled from XCom. Required adding the
+`/opt/insightiq` volume mount to `docker-compose.yaml` and `numpy` to
+`requirements.txt`, plus test coverage for `notify_failure` itself
+(`tests/test_alerting.py`) and a DAG-integrity check that it's wired
+correctly (`test_failure_alerting_wired`).
+
+Fixed the `DATABASE_URL` bug by setting
+`os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@host.docker.internal:5544/insightiq"`
+as the first line of `transform_task`, before any `etl.*` import —
+`etl.load` resolves `DATABASE_URL` at module-import time via
+`os.getenv`, and `python-dotenv`'s `load_dotenv()` doesn't override
+already-set env vars, so the explicit override wins over `.env`'s
+`localhost:5544`. `validate_task` needed no change since it only goes
+through `PostgresHook`, never `etl.load`. Verified inside the running
+worker container that `get_engine()` now resolves to
+`host.docker.internal:5544`, and the full `pytest tests/` suite (10
+tests) still passes.
+
+**Edit:** None — used as-is.
