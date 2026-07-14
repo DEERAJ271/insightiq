@@ -1082,3 +1082,67 @@ the new `test_ge_validation_dag_present_and_loads`.
 instead of `PandasDataset`) was a necessary correction, not a stylistic
 choice — the originally-requested API doesn't exist in the pinned
 library version.
+
+---
+
+## 2026-07-14 — Add RFM customer segmentation DAG
+
+**Prompt:** "Create `airflow/dags/insightiq_rfm_segmentation_dag.py`.
+Using `PostgresHook` + pandas, compute per-customer RFM scores from
+`fact_orders` and `dim_date` (recency relative to the max order date
+in the dataset, frequency as distinct order count, monetary as total
+price). Score each dimension into quintiles via `pd.qcut`, combine
+into an `rfm_segment` string, map common patterns to human-readable
+labels (Champions, At Risk/Lost, New Customers, etc. — a reasonable
+simplified rule set, documented since conventions vary). Write to a
+new `customer_rfm_segments` table, `if_exists='replace'`. Add `doc_md`,
+`on_failure_callback=notify_failure`, `schedule='@weekly'`,
+`tags=['insightiq', 'segmentation']`, and a DAG-integrity test."
+
+**Output:** Before writing the scoring logic, queried the real
+warehouse directly to check the actual R/F/M distributions rather than
+assuming a textbook-clean dataset. That surfaced a real data quirk:
+**every one of the 98,666 customers in this Olist-derived warehouse has
+exactly one order** — `customer_id` here is effectively an order-scoped
+identifier, not a persistent shopper ID carried across repeat
+purchases — so the frequency column has zero variance.
+`pd.qcut(frequency, 5, labels=[1,2,3,4,5], duplicates="drop")` on a
+constant column doesn't just collapse to fewer bins, it raises
+(`Bin labels must be one fewer than the number of bin edges`), which
+would have crashed the DAG on every run against this dataset. Confirmed
+recency (616 distinct day-counts) and monetary (7,723 distinct totals)
+both quintile cleanly with no such issue.
+
+Wrote `score_quintile()` with a documented fallback: on a `ValueError`
+from `pd.qcut`, assign a constant middle score (3) instead of crashing,
+so the DAG degrades gracefully on a low-variance dimension rather than
+requiring every dataset the DAG might run against to have "textbook"
+repeat-purchase behavior. `label_segment()` implements a 7-label rule
+set (Champions, Loyal Customers, New Customers, At Risk, Lost, Big
+Spenders, Needs Attention) via explicit R/F/M threshold checks
+(`>=4`/`<=2`), documented in a docstring since RFM labeling conventions
+aren't standardized across sources.
+
+Flagged directly in both the module docstring and the DAG's `doc_md`
+rather than leaving it to be rediscovered later: because `f_score` is
+always the constant fallback in this dataset, every label rule gated on
+a high or low `f_score` (Champions, Loyal Customers, New Customers, At
+Risk, Lost) can never fire — only "Big Spenders" and "Needs Attention"
+are reachable here. The scoring/labeling logic itself stays generic and
+would behave normally against a dataset with real repeat-purchase
+variance.
+
+Verified against the live warehouse: `airflow dags test
+insightiq_rfm_segmentation <date>` wrote 98,666 rows to the new
+`customer_rfm_segments` table — segment distribution came back exactly
+as predicted (82,333 "Needs Attention", 16,333 "Big Spenders", nothing
+else). Queried the table directly afterward to confirm column dtypes
+and spot-check a few rows' `rfm_segment` strings against their
+`r_score`/`f_score`/`m_score` values. `pytest tests/ -v` inside the
+worker container: 12/12 passing, including the new
+`test_rfm_segmentation_dag_present_and_loads`.
+
+**Edit:** None — used as-is. The `pd.qcut` fallback was a necessary
+correction discovered by querying real data before writing the scoring
+code, not a stylistic choice — the DAG as originally specified would
+have crashed on every run against this warehouse.

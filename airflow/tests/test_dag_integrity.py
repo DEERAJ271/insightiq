@@ -96,3 +96,13 @@ def test_ge_validation_dag_present_and_loads(dagbag):
         f"insightiq_ge_validation failed to import: "
         f"{dagbag.import_errors.get('insightiq_ge_validation')}"
     )
+
+
+def test_rfm_segmentation_dag_present_and_loads(dagbag):
+    assert "insightiq_rfm_segmentation" in dagbag.dags, (
+        "insightiq_rfm_segmentation DAG not found"
+    )
+    assert "insightiq_rfm_segmentation" not in dagbag.import_errors, (
+        f"insightiq_rfm_segmentation failed to import: "
+        f"{dagbag.import_errors.get('insightiq_rfm_segmentation')}"
+    )
