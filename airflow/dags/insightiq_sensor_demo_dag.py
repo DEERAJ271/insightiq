@@ -31,12 +31,13 @@ from dags.utils.alerting import notify_failure
 
 CONN_ID = "insightiq_postgres"
 
-# Intentionally set above the actual fact_orders row count (102,425 as of
-# the last real ETL run) so this sensor genuinely polls a few times and
-# times out rather than succeeding on the first check — the point of this
-# DAG is to demonstrate the poke/reschedule cycle in the logs and UI for a
-# portfolio demo, not to encode a real production threshold.
-ROW_COUNT_THRESHOLD = 200000
+# Set well below the real fact_orders row count (102,425 as of the last
+# real ETL run) so this sensor succeeds by default and the DAG passes on
+# its own in future runs. For a portfolio walkthrough demonstrating the
+# poke/reschedule polling cycle in the logs and UI, temporarily raise this
+# to 200000 and drop timeout below to 40s — that forces the sensor to
+# genuinely poll a few times and time out instead of succeeding instantly.
+ROW_COUNT_THRESHOLD = 1000
 
 
 def fact_orders_above_threshold() -> bool:
@@ -65,7 +66,7 @@ with DAG(
         task_id="wait_for_fact_orders",
         python_callable=fact_orders_above_threshold,
         poke_interval=10,
-        timeout=40,
+        timeout=120,
         mode="reschedule",
     )
 
