@@ -15,6 +15,7 @@ sys.path.insert(0, "/opt/insightiq")
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime
 import requests
 
@@ -162,4 +163,16 @@ with DAG(
     validate = PythonOperator(task_id="validate_task", python_callable=validate_task)
     summary = PythonOperator(task_id="summary_task", python_callable=summary_task)
 
-    extract >> transform >> validate >> summary
+    # Fire-and-forget: kicks off the broader insightiq_data_validation DAG's
+    # checks (null FKs, duplicate orders, review-score range, freight
+    # outliers) as its own independent DagRun, rather than duplicating that
+    # logic inline here. This run succeeds once validation has been
+    # triggered, not once it has passed — see the module-level explanation
+    # for why (set wait_for_completion=True + failed_states if you want
+    # this run to block on and reflect the downstream result instead).
+    trigger_validation = TriggerDagRunOperator(
+        task_id="trigger_data_validation",
+        trigger_dag_id="insightiq_data_validation",
+    )
+
+    extract >> transform >> validate >> summary >> trigger_validation
