@@ -826,3 +826,18 @@ worker container that `get_engine()` now resolves to
 tests) still passes.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Increase notify_failure's Ollama timeout
+
+**Prompt:** "increase the timeout in `dags/utils/alerting.py`'s
+`notify_failure()` from 15 to 30 seconds, since it timed out under
+real load."
+
+**Output:** Changed the `requests.post` call's `timeout` from `15` to
+`30` in `dags/utils/alerting.py`. Ran `pytest tests/` inside the
+worker container to confirm nothing else depended on the old value —
+all 10 tests still pass.
+
+**Edit:** None — used as-is.
