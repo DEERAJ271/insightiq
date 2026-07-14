@@ -13,6 +13,21 @@ with DAG(
     catchup=False,
     tags=["insightiq", "validation"],
     default_args={"on_failure_callback": notify_failure},
+    doc_md="""
+### insightiq_data_validation
+
+Runs 4 independent data-quality checks against `fact_orders`: NULL
+`customer_key` foreign keys, duplicate order-product rows, review scores
+outside the valid 1-5 range, and freight-value outliers (>3x price). Runs
+on a daily schedule (`@daily`), and is also triggered automatically as an
+independent DagRun by `insightiq_real_etl`'s final task after each
+successful ETL run — so validation always runs after fresh data lands, not
+just once a day.
+
+Kept as its own DAG (rather than folded into the ETL DAG) so it stays
+independently schedulable and testable, and can gain its own checks or
+cadence without touching the ETL pipeline.
+""",
 ) as dag:
 
     def check_null_foreign_keys(**context):

@@ -13,6 +13,18 @@ with DAG(
     catchup=False,
     tags=["insightiq", "dynamic-mapping"],
     default_args={"on_failure_callback": notify_failure},
+    doc_md="""
+### insightiq_category_deep_dive
+
+Computes per-category order stats (count, average price, price stddev) for
+the top 5 categories by order count. Triggered manually (`schedule=None`).
+
+Uses dynamic task mapping: `get_top_categories` returns a list of category
+names, and `analyze_category` is expanded once per category via
+`PythonOperator.partial(...).expand(...)`, rather than hardcoding 5
+separate tasks — the number of mapped task instances is determined at
+runtime from the query result.
+""",
 ) as dag:
 
     def get_top_categories():

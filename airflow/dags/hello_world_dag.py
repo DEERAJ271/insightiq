@@ -8,6 +8,14 @@ with DAG(
     schedule=None,
     catchup=False,
     tags=["test"],
+    doc_md="""
+### hello_world
+
+Smoke-test DAG confirming the Airflow setup itself works — two
+`BashOperator` tasks that just echo text, with no dependency on Postgres,
+`etl/`, or any other project code. Triggered manually (`schedule=None`).
+Not part of the InsightIQ pipeline; kept around as a baseline sanity check.
+""",
 ) as dag:
     task1 = BashOperator(
         task_id="say_hello",

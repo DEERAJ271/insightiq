@@ -12,6 +12,19 @@ with DAG(
     schedule="@weekly",
     catchup=False,
     tags=["insightiq", "transformation"],
+    doc_md="""
+### insightiq_category_summary
+
+Rebuilds the `category_summary` table (order count, average price, average
+freight, average review score per product category) by aggregating
+`fact_orders` joined to `dim_product` and writing the result back to
+Postgres via `to_sql(..., if_exists="replace")`. Runs on a weekly schedule
+(`@weekly`).
+
+Aggregate columns are coerced with `pd.to_numeric(errors="coerce")` before
+rounding as a defensive cast against non-numeric/NULL-tainted values
+reaching `.round()`.
+""",
 ) as dag:
 
     def build_category_summary():

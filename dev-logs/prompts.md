@@ -880,3 +880,69 @@ execution as Airflow tasks: extract -> transform+load -> validate
 (referential integrity) -> LLM-generated run summary.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Chain insightiq_real_etl into insightiq_data_validation
+
+**Prompt:** "Chain `insightiq_real_etl_dag.py` to
+`insightiq_data_validation_dag.py` using `TriggerDagRunOperator`, so a
+successful ETL run automatically triggers downstream validation instead
+of relying on separate schedules or manual triggers."
+
+**Output:** Added a `trigger_validation` task to
+`insightiq_real_etl_dag.py` using
+`airflow.providers.standard.operators.trigger_dagrun.TriggerDagRunOperator`
+with `trigger_dag_id="insightiq_data_validation"`, appended to the end
+of the existing chain: `extract >> transform >> validate >> summary >>
+trigger_validation`. Left it fire-and-forget (no
+`wait_for_completion`/`failed_states`) — the ETL run is considered
+successful once validation has been *triggered*, not once it has
+*passed*.
+
+Chose `TriggerDagRunOperator` over merging validation's checks directly
+into the ETL DAG because it keeps `insightiq_data_validation`
+independently schedulable and testable (it already has its own
+`schedule=None`/manual-trigger history and its own DagBag/pytest
+coverage) rather than folding those checks into one growing monolithic
+DAG. It also leaves the door open for validation to run on its own
+cadence later — e.g. a periodic schedule in addition to the ETL-triggered
+run — without restructuring the ETL DAG again.
+
+Verified by triggering `insightiq_real_etl` and confirming a new
+automatic run appeared in `insightiq_data_validation`'s Dag Runs
+immediately after the ETL run's `summary_task` completed.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Add execution_timeout and doc_md across all DAGs
+
+**Prompt:** "Add `execution_timeout=timedelta(minutes=15)` to the
+`extract_task` and `transform_task` in `insightiq_real_etl_dag.py` as a
+safety net against runaway tasks. Add `doc_md` to the top of every DAG
+in `airflow/dags/` — a short markdown description of what each DAG
+does, its schedule, and any notable design decisions — so it renders in
+the Airflow UI's DAG details page."
+
+**Output:** Added `execution_timeout=timedelta(minutes=15)` to both
+`extract_task` and `transform_task` in `insightiq_real_etl_dag.py`
+(the two tasks that touch the CSV extract and the Postgres load, the
+most likely places for a hang) — `validate_task` and `summary_task`
+were left without one since they're bounded, cheap operations.
+
+Added a `doc_md` to all 6 DAGs' `DAG(...)` constructors, each covering
+purpose, trigger/schedule, and the one or two design decisions worth
+calling out for a reader in the UI rather than the source: dynamic
+task mapping in `insightiq_category_deep_dive`, `mode="reschedule"` in
+`insightiq_sensor_demo`, the DAG-to-DAG `TriggerDagRunOperator` chain
+between `insightiq_real_etl` and `insightiq_data_validation`, and the
+defensive `pd.to_numeric` cast in `insightiq_category_summary`.
+
+Verified via `pytest tests/` inside the worker container — all 10
+tests pass (DagBag import errors, DAG presence, tagging, no cycles,
+task structure), confirming every DAG still parses cleanly with the
+added `doc_md` and `execution_timeout` kwargs.
+
+**Edit:** None — used as-is.

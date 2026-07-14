@@ -60,6 +60,21 @@ with DAG(
     catchup=False,
     tags=["insightiq", "sensor-demo"],
     default_args={"on_failure_callback": notify_failure},
+    doc_md="""
+### insightiq_sensor_demo
+
+Demonstrates a `PythonSensor` that waits for `fact_orders` to exceed a row
+count threshold before `report_ready` runs. Triggered manually
+(`schedule=None`).
+
+Runs in `mode="reschedule"` rather than the default `mode="poke"`, so the
+sensor releases its worker slot between checks instead of occupying one for
+its entire wait — avoiding a scenario where long-running sensors starve
+other DAGs of worker capacity. `ROW_COUNT_THRESHOLD` is set well below the
+real `fact_orders` count so this succeeds immediately in normal runs; see
+the module docstring for how to temporarily raise it to actually
+demonstrate the poll/reschedule cycle.
+""",
 ) as dag:
 
     wait_for_data = PythonSensor(

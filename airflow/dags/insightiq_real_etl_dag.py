@@ -16,7 +16,7 @@ from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 from dags.utils.alerting import notify_failure
@@ -156,10 +156,36 @@ with DAG(
     catchup=False,
     tags=["insightiq", "etl", "real-pipeline"],
     default_args={"on_failure_callback": notify_failure},
+    doc_md="""
+### insightiq_real_etl
+
+The primary ETL pipeline: extracts the raw Olist CSVs, transforms them into
+the star schema, and loads them into Postgres — the first DAG in this
+project to call the actual `etl/` package instead of reimplementing that
+logic inline. Triggered manually (`schedule=None`).
+
+`extract_task` only reports row counts via XCom since XCom is metadata-DB
+backed and not meant to carry pandas DataFrames; `transform_task`
+re-extracts locally and performs transform+load in one task since the
+DataFrames it builds never need to leave it. `validate_task` checks row
+counts and referential integrity, and `summary_task` produces an
+LLM-generated (Ollama) plain-English run summary. On success, the final
+task fire-and-forget triggers `insightiq_data_validation` as its own
+independent DagRun via `TriggerDagRunOperator`, chaining ETL to validation
+without duplicating validation's checks here.
+""",
 ) as dag:
 
-    extract = PythonOperator(task_id="extract_task", python_callable=extract_task)
-    transform = PythonOperator(task_id="transform_task", python_callable=transform_task)
+    extract = PythonOperator(
+        task_id="extract_task",
+        python_callable=extract_task,
+        execution_timeout=timedelta(minutes=15),
+    )
+    transform = PythonOperator(
+        task_id="transform_task",
+        python_callable=transform_task,
+        execution_timeout=timedelta(minutes=15),
+    )
     validate = PythonOperator(task_id="validate_task", python_callable=validate_task)
     summary = PythonOperator(task_id="summary_task", python_callable=summary_task)
 
