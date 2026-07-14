@@ -25,6 +25,7 @@ Raw CSV --> Python ETL --> Postgres warehouse --> Power BI dashboard
 |----------------|---------------------------------------------|
 | ETL            | Python, pandas, SQLAlchemy                  |
 | Warehouse      | PostgreSQL (star schema)                    |
+| Orchestration  | Apache Airflow (DAGs, retries, scheduling), n8n (visual prototyping) |
 | BI             | Power BI, DAX                               |
 | Retrieval      | LangChain (or LlamaIndex), Chroma           |
 | LLM            | Claude API (Anthropic)                      |
@@ -39,7 +40,18 @@ retail/sales dataset — the schema in `sql/schema.sql` is the thing to adapt.
 
 ## Setup
 
+Requires [Ollama](https://ollama.com) running locally — `llm/chatbot.py`
+and `llm/nl2sql.py` both default to `LLM_BACKEND=ollama`, calling
+`http://127.0.0.1:11434`, so `streamlit run` will fail on the first
+question without it (unless you switch `.env`'s `LLM_BACKEND` to
+`anthropic` and supply `ANTHROPIC_API_KEY` instead).
+
 ```bash
+# 0. Prerequisite: local LLM backend
+# Install Ollama (https://ollama.com), then pull the model both
+# llm/chatbot.py and llm/nl2sql.py call by default:
+ollama pull llama3.2
+
 # 1. Environment
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
@@ -65,6 +77,17 @@ Power BI: point a new report at the `insightiq` Postgres database
 `fact_orders` / `dim_*` tables. See `powerbi/README.md` for suggested
 measures.
 
+## Orchestration
+
+- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 6 DAGs
+  covering the real ETL pipeline (with DAG-to-DAG triggering into a
+  validation DAG), parallel data-quality checks, dynamic task mapping,
+  and a sensor/reschedule-mode demo. See `airflow/README.md` for setup,
+  the Postgres connection config, and container-networking notes.
+- **`n8n/`** — n8n workflows for fast, visual prototyping of the same
+  ETL-orchestration and data-validation ideas, built first and kept
+  alongside Airflow rather than replaced by it. See `n8n/README.md`.
+
 ## Project structure
 
 ```
@@ -75,6 +98,8 @@ insightiq/
 ├── rag/                # embedding + retrieval logic
 ├── llm/                # NL2SQL and chatbot orchestration
 ├── app/                # Streamlit UI
+├── airflow/            # Airflow DAGs (Docker Compose) — see airflow/README.md
+├── n8n/                # n8n workflows (visual orchestration) — see n8n/README.md
 ├── powerbi/            # dashboard notes (the .pbix itself isn't checked in)
 ├── tests/              # unit tests
 └── dev-logs/           # Claude Code prompt log — the "how it was built" record
@@ -93,10 +118,10 @@ insightiq/
 
 ## Status
 
-- [ ] ETL pipeline
-- [ ] Warehouse schema
+- [x] ETL pipeline
+- [x] Warehouse schema
 - [ ] Power BI dashboard
-- [ ] RAG index
-- [ ] LLM chatbot
-- [ ] Streamlit integration
+- [x] RAG index
+- [x] LLM chatbot
+- [x] Streamlit integration
 - [ ] Demo recording
