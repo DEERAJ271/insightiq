@@ -841,3 +841,42 @@ worker container to confirm nothing else depended on the old value —
 all 10 tests still pass.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-14 — Build insightiq_real_etl_dag.py against the real etl/ pipeline
+
+**Prompt:** "Create `insightiq_real_etl_dag.py`, the first Airflow DAG
+that calls the project's actual `etl/` pipeline code rather than
+reimplementing that logic, with extract, transform+load, validate, and
+LLM-summary tasks — then verify the full pipeline actually runs
+end-to-end via direct task execution."
+
+**Output:** Built `insightiq_real_etl_dag.py` as the first DAG that
+calls the project's actual `etl/` pipeline code (`extract_all`,
+`clean_orders`/`clean_customers`/`clean_sellers`/`clean_products`,
+`build_fact_orders`, `_truncate_all`, `load_table`) instead of
+reimplementing that logic inline. Solved the XCom dataframe-passing
+limitation by having `extract_task` report only row counts (cheap XCom
+metadata) while `transform_task` re-extracts locally and performs
+transform+load in one task, since the large DataFrames it builds never
+need to leave that task.
+
+Hit and fixed a real bug: `etl.load.get_engine()` reads `DATABASE_URL`
+from `.env` (`localhost:5544`, correct for running outside Docker),
+which resolves incorrectly inside the Airflow container since
+"localhost" there refers to the container itself. Fixed by overriding
+`DATABASE_URL` to `host.docker.internal:5544` at task runtime, before
+any `etl.*` import.
+
+Also hit the same recurring stopped-Postgres-container issue seen in
+earlier sessions — the third occurrence today — suggesting the Mac's
+sleep behavior is bypassing the `unless-stopped` restart policy
+regardless of container config; worth investigating separately from
+the DAG itself.
+
+Verified the full pipeline (102,425 `fact_orders` rows) via direct
+execution as Airflow tasks: extract -> transform+load -> validate
+(referential integrity) -> LLM-generated run summary.
+
+**Edit:** None — used as-is.
