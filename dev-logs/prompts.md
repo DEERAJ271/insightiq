@@ -1146,3 +1146,78 @@ worker container: 12/12 passing, including the new
 correction discovered by querying real data before writing the scoring
 code, not a stylistic choice — the DAG as originally specified would
 have crashed on every run against this warehouse.
+
+---
+
+## 2026-07-14 — Fix RFM segment labeling (2-bucket collapse)
+
+**Prompt:** "The RFM scores are well-distributed but `segment_label`
+collapses almost everything into just 'Big Spenders' or 'Needs
+Attention' — a bug in the labeling rules, not the scoring. Replace
+`label_segment()` with a standard, granular 11-segment RFM scheme
+(Champions, Loyal Customers, Potential Loyalists, New Customers,
+Promising, Needs Attention, About to Sleep, At Risk, Can't Lose Them,
+Hibernating, Lost), specific R/F/M threshold combinations given for
+each, applied as an if/elif chain, most specific first. Re-run and
+confirm at least 5-6 distinct labels with reasonable counts."
+
+**Output:** Implemented the 11-segment chain exactly as specified, plus
+a necessary `"Other"` fallback (the 11 rules don't cover the full
+5×5×5 `(r,f,m)` cube — e.g. `r=5,f=3,m=1` matches none of them). Found
+and fixed a real bug in the given spec while implementing it:
+`Hibernating` (`r==1, f<=2, m<=2`) and `Lost` (`r==1, f<=2, m<=2`) were
+defined by identical conditions, making `Lost` unreachable dead code
+behind `Hibernating`. Fixed by making `Lost` the strictly worse case
+(`f<=1, m<=1`) and checking it first, matching the "specific segments
+first" ordering principle the prompt itself specified.
+
+Ran it against the live warehouse before declaring success, per this
+project's pattern of verifying against real data rather than trusting
+that a rule rewrite "should" work: only **4** distinct labels came back
+(`Other`: 39,788, `Potential Loyalists`: 31,707, `At Risk`: 23,086,
+`Needs Attention`: 4,085) — short of the requested 5-6, and worse in
+one sense, since 40% now fell into an unnamed catch-all. Root cause
+wasn't the label rules (correctly implemented) but the same upstream
+issue from the previous session, expressed differently: `f_score` is
+still a constant 3 for every customer (frequency = distinct order
+count, zero variance in this dataset), and 8 of the 11 named segments
+require `f_score` to leave the middle band, which can never happen.
+Relabeling alone can't fix an input signal with no information in it.
+
+Presented this honestly rather than reporting the literal rule-rewrite
+as "done," then used `AskUserQuestion` to get a real decision on how to
+proceed: redefine frequency to something with real variance, accept 4
+labels as a documented data-driven limit, or defer. User chose to
+redefine frequency.
+
+Switched frequency from distinct order count to total items purchased
+(`SUM(item_count)` — verified 17 distinct values, real variance, unlike
+order count). That data is heavily right-skewed too (~90% of customers
+bought exactly one item), so tested two scoring approaches against real
+data before picking one: plain `pd.qcut` still fails (25th/50th/75th
+percentiles all equal 1); rank-based quintile binning
+(`total_items.rank(method="first")` then `qcut`) produces 5
+perfectly-balanced bins on paper, but checking what it actually
+contained showed 4 of the 5 bins were indistinguishable (every customer
+in all four had exactly 1 item) — it was fabricating differentiation
+from arbitrary row-order tie-breaking, not reflecting anything real.
+Rejected that and wrote `score_frequency()` instead: total items capped
+at 5 (`1 -> 1, ..., 5+ -> 5`), not a statistical quintile but honest
+about what the data shows.
+
+Re-ran against the live warehouse: all **11** named segments plus
+`Other` are now reachable (`Other` 51,095, `New Customers` 14,994,
+`Promising` 11,840, `About to Sleep` 7,915, `Hibernating` 4,154, `Lost`
+4,013, `Potential Loyalists` 3,279, `At Risk` 831, `Champions` 317,
+`Loyal Customers` 203, `Needs Attention` 25). Spot-checked one real row
+(`frequency=21, f_score=5, r_score=1, m_score=1` → `"Other"`) by hand
+against `label_segment()`'s rules to confirm the logic, not just the
+distribution shape, is correct. `pytest tests/ -v`: 12/12 passing,
+unaffected by the frequency-source change.
+
+**Edit:** The rank-based quintile approach was implemented, tested
+against real data, and discarded after the test showed it fabricated
+signal rather than reflecting it — a judgment call made and explained
+in the moment rather than looped back to the user, since it was an
+implementation-quality decision within the already-agreed "redefine
+frequency" direction, not a new fork.

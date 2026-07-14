@@ -3,12 +3,16 @@ Computes per-customer RFM (Recency, Frequency, Monetary) scores and
 quintile-based segment labels from fact_orders + dim_date, writing the
 result to customer_rfm_segments.
 
-Dataset quirk worth knowing before reading score_quintile()'s fallback
-branch: every customer_key in this Olist-derived warehouse has exactly
-one order — customer_id here is effectively an order-scoped identifier,
-not a persistent shopper ID carried across repeat purchases — so the
-frequency dimension has zero variance and always falls back to a
-constant score. See that function's docstring and the DAG's doc_md.
+Dataset quirk worth knowing up front: every customer_key in this
+Olist-derived warehouse has exactly one order — customer_id here is
+effectively an order-scoped identifier, not a persistent shopper ID
+carried across repeat purchases — so distinct order count has zero
+variance and can't drive the frequency dimension at all. Frequency is
+computed from total item_count per customer instead (see
+build_rfm_segments() and score_frequency()), which does vary, but is
+heavily right-skewed (~90% of customers bought exactly one item), which
+is itself worth reading score_frequency()'s docstring for before
+assuming a plain pd.qcut quintile would work here.
 """
 import pandas as pd
 
@@ -41,48 +45,77 @@ def score_quintile(series: pd.Series, higher_is_better: bool = True) -> pd.Serie
         return pd.Series(3, index=series.index)
 
 
+def score_frequency(total_items: pd.Series) -> pd.Series:
+    """
+    Score total items purchased per customer into a 1-5 "frequency"
+    score, 5 = best.
+
+    Tried plain pd.qcut() first and rejected it: total_items is heavily
+    right-skewed in this dataset (~90% of customers bought exactly one
+    item), so the 25th/50th/75th percentiles are all 1 and qcut can't
+    form 5 real bins. Also tried rank-based quintile binning
+    (pd.qcut(total_items.rank(method="first"), 5, ...), which breaks
+    ties by row order to force 5 equal-COUNT bins) and rejected that
+    too after checking what it actually produced: 5 perfectly balanced
+    bins, but scores 1 through 4 were indistinguishable from each other
+    (every customer in all four had total_items == 1) — it was
+    fabricating differentiation from arbitrary tie order, not reflecting
+    anything real about the customer.
+
+    Uses a direct value-based score instead: total_items capped at 5
+    (1 item -> score 1, 2 -> 2, 3 -> 3, 4 -> 4, 5+ -> 5). Not a
+    statistical quintile, but honest about what the data actually shows
+    — and this is standard practice for frequency counts in RFM
+    analysis generally, since order/item counts are usually small,
+    skewed integers rather than a smooth continuous distribution.
+    """
+    return total_items.clip(upper=5).astype(int)
+
+
 def label_segment(r: int, f: int, m: int) -> str:
     """
-    Simplified RFM segment labeling. RFM labeling conventions vary
-    across sources; this is a reasonable, commonly-seen reduced rule
-    set, not an authoritative standard. Scores are 1-5 (5 = best);
-    "high" below means >=4, "low" means <=2.
+    Standard 11-segment RFM labeling (Champions / Loyal Customers /
+    Potential Loyalists / New Customers / Promising / Needs Attention /
+    About to Sleep / At Risk / Can't Lose Them / Hibernating / Lost),
+    checked as an if/elif chain from most to least specific/valuable so
+    a customer matching multiple conditions gets the more meaningful
+    label. Scores are 1-5 (5 = best).
 
-    - Champions       : high R, high F, high M (e.g. "555", "554") —
-                        bought recently, often, and spends the most.
-    - Loyal Customers : high F, high M, any R — buys often and big
-                        regardless of how recently.
-    - New Customers   : high R, low F — bought recently but hasn't
-                        built up any purchase frequency yet.
-    - At Risk         : low R, high F — used to buy often, hasn't
-                        been back recently.
-    - Lost            : low R, low F, low M — bottom of every
-                        dimension.
-    - Big Spenders    : high R, high M, but not high F — one big
-                        recent purchase, not yet a frequent buyer.
-    - Needs Attention : catch-all for everything in the mid-range.
-                        Expected to be the largest bucket in most real
-                        datasets, since most customers cluster around
-                        the middle on at least one dimension — and, in
-                        this dataset specifically, the only bucket
-                        alongside Big Spenders that's actually reachable,
-                        since f_score is always the constant fallback (3)
-                        and can never cross the >=4 / <=2 thresholds
-                        above.
+    IMPORTANT: this rule set does not cover every (r, f, m) combination
+    in the 5x5x5 cube — e.g. r=5, f=3, m=1 matches none of the 11 rules
+    below. "Other" is a deliberate fallback for whatever falls through,
+    not one of the 11 named segments. See the DAG's doc_md for how often
+    that fallback actually fires against this specific dataset.
     """
     if r >= 4 and f >= 4 and m >= 4:
         return "Champions"
-    if f >= 4 and m >= 4:
+    if r >= 3 and f >= 4 and m >= 3:
         return "Loyal Customers"
-    if r >= 4 and f <= 2:
+    if r >= 4 and 2 <= f < 4 and m >= 2:
+        return "Potential Loyalists"
+    if r >= 4 and f <= 2 and m <= 2:
         return "New Customers"
-    if r <= 2 and f >= 4:
+    if r == 3 and f <= 2 and m <= 3:
+        return "Promising"
+    if r == 3 and f == 3 and m == 3:
+        return "Needs Attention"
+    if r == 2 and f <= 2 and m <= 2:
+        return "About to Sleep"
+    if r <= 2 and f >= 3 and m >= 3:
         return "At Risk"
-    if r <= 2 and f <= 2 and m <= 2:
+    if r <= 1 and f >= 4 and m >= 4:
+        return "Can't Lose Them"
+    # As specified, Hibernating (r==1, f<=2, m<=2) and Lost (r==1, f<=2,
+    # m<=2) were identical conditions, making Lost unreachable dead code
+    # behind Hibernating. Kept them as a specific-first pair instead:
+    # Lost is the strictly worse case (bottom of every dimension) and is
+    # checked before the broader Hibernating, matching the "more
+    # specific first" ordering principle used throughout this chain.
+    if r == 1 and f <= 1 and m <= 1:
         return "Lost"
-    if r >= 4 and m >= 4:
-        return "Big Spenders"
-    return "Needs Attention"
+    if r == 1 and f <= 2 and m <= 2:
+        return "Hibernating"
+    return "Other"
 
 
 def build_rfm_segments(**context):
@@ -90,7 +123,8 @@ def build_rfm_segments(**context):
     engine = hook.get_sqlalchemy_engine()
 
     df = pd.read_sql("""
-        SELECT f.customer_key, f.order_id, f.price, d.full_date AS order_date
+        SELECT f.customer_key, f.order_id, f.item_count, f.price,
+               d.full_date AS order_date
         FROM fact_orders f
         JOIN dim_date d ON f.order_date_key = d.date_key
         WHERE f.customer_key IS NOT NULL;
@@ -103,13 +137,16 @@ def build_rfm_segments(**context):
 
     rfm = df.groupby("customer_key").agg(
         last_order_date=("order_date", "max"),
-        frequency=("order_id", "nunique"),
+        # Distinct order count has zero variance in this dataset (every
+        # customer has exactly one order) — total items purchased is
+        # used as the frequency signal instead, since it actually varies.
+        frequency=("item_count", "sum"),
         monetary=("price", "sum"),
     ).reset_index()
     rfm["recency_days"] = (max_order_date - rfm["last_order_date"]).dt.days
 
     rfm["r_score"] = score_quintile(rfm["recency_days"], higher_is_better=False)
-    rfm["f_score"] = score_quintile(rfm["frequency"], higher_is_better=True)
+    rfm["f_score"] = score_frequency(rfm["frequency"])
     rfm["m_score"] = score_quintile(rfm["monetary"], higher_is_better=True)
 
     rfm["rfm_segment"] = (
@@ -153,26 +190,35 @@ weekly schedule (`@weekly`).
 - **Recency**: days since each customer's most recent order, relative
   to the most recent order date in the whole dataset (this is
   historical data, not a live feed, so "today" wouldn't mean anything).
-- **Frequency**: distinct order count per customer.
+- **Frequency**: total items purchased per customer (`SUM(item_count)`),
+  **not** distinct order count — every `customer_key` in this
+  Olist-derived warehouse has exactly one order (`customer_id` here is
+  effectively order-scoped, not a persistent shopper ID), so order
+  count has zero variance and can't differentiate anyone. Total items
+  purchased does vary and is used instead.
 - **Monetary**: total price spent per customer.
 
-Each dimension is scored into 1-5 quintiles via `pd.qcut` (5 = best)
-and combined into an `rfm_segment` string like `"555"` or `"311"`, then
-mapped to a human-readable `segment_label` (Champions, Loyal Customers,
-New Customers, At Risk, Lost, Big Spenders, Needs Attention) via a
-simplified, documented rule set in `label_segment()` — RFM labeling
-conventions vary across sources, so this is a reasonable approximation,
-not an authoritative standard.
+Recency and monetary are scored into 1-5 quintiles via `pd.qcut` (5 =
+best, `score_quintile()`). Frequency uses a different scorer,
+`score_frequency()`: total items is heavily right-skewed (~90% of
+customers bought exactly one item), so plain quintile binning can't
+form 5 real bins, and rank-based tie-breaking was tried and rejected
+after checking its actual output — it produced 5 evenly-sized bins, but
+4 of the 5 were indistinguishable (all exactly 1 item), fabricating
+differentiation from arbitrary row order rather than reflecting
+anything real. Frequency is scored directly instead: total items
+capped at 5 (1 item -> score 1, ..., 5+ items -> score 5) — see that
+function's docstring.
 
-**Known data quirk:** every `customer_key` in this Olist-derived
-warehouse has exactly one order, so the frequency dimension has zero
-variance; `pd.qcut` can't form 5 real bins from a constant column, so
-`f_score` falls back to a constant middle score (3) for every customer.
-In practice, that collapses `segment_label` down to mostly "Needs
-Attention" and "Big Spenders" for this specific dataset, since every
-label rule that depends on a high or low `f_score` can never fire. The
-scoring and labeling logic itself is written generically and would
-behave normally against a dataset with real repeat-purchase behavior.
+The three scores combine into an `rfm_segment` string like `"555"` or
+`"311"`, then map to a human-readable `segment_label` via the standard
+11-segment RFM scheme (Champions, Loyal Customers, Potential Loyalists,
+New Customers, Promising, Needs Attention, About to Sleep, At Risk,
+Can't Lose Them, Hibernating, Lost) plus an `"Other"` catch-all for any
+`(r, f, m)` combination the 11 rules don't cover — see `label_segment()`'s
+docstring; RFM labeling conventions vary across sources, so exact
+thresholds are one reasonable convention, not an authoritative
+standard.
 """,
 ) as dag:
 
