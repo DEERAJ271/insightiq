@@ -10,6 +10,7 @@ real Airflow projects.
 import os
 import pytest
 from airflow.models import DagBag
+from dags.utils.alerting import notify_failure
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +58,21 @@ def test_no_cycles(dagbag):
             dag.topological_sort()
         except Exception as e:
             pytest.fail(f"DAG {dag_id} has a cycle or invalid structure: {e}")
+
+
+def test_failure_alerting_wired(dagbag):
+    dags_expecting_alerting = {
+        "insightiq_data_validation",
+        "insightiq_category_deep_dive",
+    }
+    for dag_id in dags_expecting_alerting:
+        dag = dagbag.dags.get(dag_id)
+        assert dag is not None, f"DAG {dag_id} not found"
+        callback = (dag.default_args or {}).get("on_failure_callback")
+        assert callback is notify_failure, (
+            f"DAG {dag_id} does not have notify_failure wired as its "
+            f"on_failure_callback (found: {callback!r})"
+        )
 
 
 def test_validation_dag_has_expected_tasks(dagbag):
