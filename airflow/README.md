@@ -2,7 +2,7 @@
 
 Local Apache Airflow 3.3.0 via Docker Compose (CeleryExecutor, Redis,
 Postgres-backed metadata db), running alongside InsightIQ's own Postgres
-warehouse and the n8n automation layer (see `n8n/README.md`). 6 DAGs, each
+warehouse and the n8n automation layer (see `n8n/README.md`). 7 DAGs, each
 demonstrating a distinct orchestration pattern rather than all doing the
 same kind of work.
 
@@ -85,6 +85,28 @@ The primary pipeline, and the first DAG to call the project's actual
 `extract_task` and `transform_task` both carry
 `execution_timeout=timedelta(minutes=15)` as a safety net against a
 runaway task (e.g. a hung DB connection) blocking a worker indefinitely.
+
+### 7. `insightiq_ge_validation` — Great Expectations expectation suite
+
+A formal, expectation-suite-based counterpart to
+`insightiq_data_validation`'s hand-written SQL checks, over an
+overlapping but not identical rule set: `customer_key`/`product_key`
+not null, `review_score` in 1-5 for at least 95% of non-null values
+(`mostly=0.95`, tolerant of legitimately unreviewed orders), `price >= 0`,
+and `item_count >= 1`. Triggered manually (`schedule=None`).
+
+Reads `fact_orders` via `PostgresHook.get_sqlalchemy_engine()` + pandas,
+then validates the DataFrame with Great Expectations' ephemeral-context
+`Batch.validate()` API (`gx.get_context(mode="ephemeral")` → `add_pandas()`
+→ `add_dataframe_asset()` → `add_batch_definition_whole_dataframe()` →
+`batch.validate(expectation)`) — no persisted GX project directory,
+Datasource YAML, or Checkpoint config. This is a deliberate substitution:
+the classic `PandasDataset`/`ge.from_pandas()` shortcut no longer exists
+in `great_expectations` 1.18.2, the version actually installed despite
+the `>=0.18` floor in `requirements.txt`. Prints a `[PASS]`/`[FAIL]` line
+per expectation with the unexpected/total count, and raises if any
+expectation fails — every expectation here is a hard gate, unlike
+`insightiq_data_validation`'s freight-outlier check, which only warns.
 
 ## Airflow Connection setup
 
@@ -172,10 +194,10 @@ summarize.
 
 ## Known limitations / follow-ups
 
-- `great-expectations` is pinned in `requirements.txt` but not actually
-  used by any DAG yet — validation today is hand-rolled SQL checks in
-  `insightiq_data_validation`, not Great Expectations expectation suites.
-  A GE-based validation DAG is a planned follow-up, not a built feature.
+- `insightiq_ge_validation` and `insightiq_data_validation` check
+  overlapping but not identical rules against `fact_orders` and run
+  independently of each other — neither triggers the other, and nothing
+  reconciles a case where one passes and the other fails.
 - `notify_failure` (`dags/utils/alerting.py`) prints an LLM-generated
   alert summary to the failing task's logs. It is not wired to a real
   notification channel (Slack, email, PagerDuty) — a failure is only

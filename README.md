@@ -79,11 +79,12 @@ measures.
 
 ## Orchestration
 
-- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 6 DAGs
+- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 7 DAGs
   covering the real ETL pipeline (with DAG-to-DAG triggering into a
   validation DAG), parallel data-quality checks, dynamic task mapping,
-  and a sensor/reschedule-mode demo. See `airflow/README.md` for setup,
-  the Postgres connection config, and container-networking notes.
+  a sensor/reschedule-mode demo, and a Great Expectations expectation
+  suite. See `airflow/README.md` for setup, the Postgres connection
+  config, and container-networking notes.
 - **`n8n/`** — n8n workflows for fast, visual prototyping of the same
   ETL-orchestration and data-validation ideas, built first and kept
   alongside Airflow rather than replaced by it. See `n8n/README.md`.
