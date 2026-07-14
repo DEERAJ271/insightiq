@@ -8,6 +8,7 @@ row counts (for an early sanity signal); transform_task re-extracts (cheap,
 since the source is local CSVs) and performs transform+load in one task,
 since the cleaned DataFrames it builds never need to leave that task.
 """
+import os
 import sys
 sys.path.insert(0, "/opt/insightiq")
 
@@ -21,6 +22,12 @@ from dags.utils.alerting import notify_failure
 
 CONN_ID = "insightiq_postgres"
 OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
+
+# etl.load reads DATABASE_URL from .env, which points at localhost:5544 for
+# running outside Docker. Inside the Airflow containers "localhost" refers
+# to the container itself, so it's overridden here before any etl module
+# that touches DATABASE_URL gets imported.
+REAL_DB_URL = "postgresql://postgres:postgres@host.docker.internal:5544/insightiq"
 
 FK_CHECKS = [
     ("customer_key", "dim_customer"),
@@ -42,6 +49,8 @@ def extract_task(**context):
 
 
 def transform_task(**context):
+    os.environ["DATABASE_URL"] = REAL_DB_URL
+
     import pandas as pd
     from etl.extract import extract_all
     from etl.transform import (
