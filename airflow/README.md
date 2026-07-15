@@ -134,10 +134,16 @@ Computes per-customer Recency/Frequency/Monetary scores from
 `rfm_segment` string (e.g. `"555"`) and map to one of the standard
 11 RFM segment labels (Champions, Loyal Customers, Potential
 Loyalists, New Customers, Promising, Needs Attention, About to Sleep,
-At Risk, Can't Lose Them, Hibernating, Lost) plus an `"Other"`
-catch-all for any `(r, f, m)` combination the 11 rules don't cover —
-see `label_segment()`'s docstring in the DAG file for the exact
-thresholds and ordering.
+At Risk, Can't Lose Them, Hibernating, Lost) plus two labels added
+specifically for this dataset — Big Ticket Shoppers and Lapsed Big
+Spenders, covering low item count (`f<=2`) combined with
+moderate-to-high spend (`m>=3`) at any recency, which the 11 standard
+rules didn't catch and which turned out to be the overwhelming majority
+(~52% of all customers) of what an `"Other"` catch-all was absorbing.
+`"Other"` still exists for the small residue (~0.4%) of rare `(r, f, m)`
+combinations none of the 13 rules cover — see `label_segment()`'s
+docstring in the DAG file for the query and breakdown behind this, and
+the exact thresholds and ordering.
 
 ## Airflow Connection setup
 

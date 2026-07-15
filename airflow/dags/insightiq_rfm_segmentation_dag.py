@@ -76,16 +76,27 @@ def label_segment(r: int, f: int, m: int) -> str:
     """
     Standard 11-segment RFM labeling (Champions / Loyal Customers /
     Potential Loyalists / New Customers / Promising / Needs Attention /
-    About to Sleep / At Risk / Can't Lose Them / Hibernating / Lost),
-    checked as an if/elif chain from most to least specific/valuable so
-    a customer matching multiple conditions gets the more meaningful
-    label. Scores are 1-5 (5 = best).
+    About to Sleep / At Risk / Can't Lose Them / Hibernating / Lost)
+    plus two dataset-specific additions (Big Ticket Shoppers / Lapsed
+    Big Spenders, see below), checked as an if/elif chain from most to
+    least specific/valuable so a customer matching multiple conditions
+    gets the more meaningful label. Scores are 1-5 (5 = best).
 
-    IMPORTANT: this rule set does not cover every (r, f, m) combination
-    in the 5x5x5 cube — e.g. r=5, f=3, m=1 matches none of the 11 rules
-    below. "Other" is a deliberate fallback for whatever falls through,
-    not one of the 11 named segments. See the DAG's doc_md for how often
-    that fallback actually fires against this specific dataset.
+    Querying customer_rfm_segments confirmed the "Other" fallback was
+    firing for 51,095 of 98,666 customers (~52%) before the two extra
+    rules below were added. Grouping those rows by (r, f, m) showed the
+    gap wasn't the broad r=f=m=3 middle ground one might guess — it was
+    overwhelmingly (93% of "Other") f<=2 combined with m>=3, spread
+    ~evenly across *all* r values. That combination makes sense given
+    this dataset's frequency quirk (see module docstring and
+    score_frequency()): frequency here is item count capped at 5 and
+    heavily skewed toward 1, so it's effectively independent of spend —
+    a customer can easily buy a single, expensive item. None of the 11
+    standard rules were written to catch "low item count, high spend"
+    at every recency level, since standard RFM assumes frequency and
+    monetary are correlated. The remaining ~0.4% of "Other" (scattered
+    across dozens of rare (r,f,m) cells, each a handful of customers)
+    is left as genuine fallback rather than chased with more rules.
     """
     if r >= 4 and f >= 4 and m >= 4:
         return "Champions"
@@ -115,6 +126,15 @@ def label_segment(r: int, f: int, m: int) -> str:
         return "Lost"
     if r == 1 and f <= 2 and m <= 2:
         return "Hibernating"
+    # Dataset-specific: low item count (f<=2) but moderate-to-high spend
+    # (m>=3) isn't covered by any standard rule above at any recency
+    # level (see docstring). Split by recency so the two labels stay
+    # actionable: recent big-ticket buyers are a nurture/upsell target,
+    # lapsed ones are a win-back target.
+    if r >= 3 and f <= 2 and m >= 3:
+        return "Big Ticket Shoppers"
+    if r <= 2 and f <= 2 and m >= 3:
+        return "Lapsed Big Spenders"
     return "Other"
 
 
@@ -214,11 +234,18 @@ The three scores combine into an `rfm_segment` string like `"555"` or
 `"311"`, then map to a human-readable `segment_label` via the standard
 11-segment RFM scheme (Champions, Loyal Customers, Potential Loyalists,
 New Customers, Promising, Needs Attention, About to Sleep, At Risk,
-Can't Lose Them, Hibernating, Lost) plus an `"Other"` catch-all for any
-`(r, f, m)` combination the 11 rules don't cover — see `label_segment()`'s
-docstring; RFM labeling conventions vary across sources, so exact
-thresholds are one reasonable convention, not an authoritative
-standard.
+Can't Lose Them, Hibernating, Lost) plus two segments added specifically
+for this dataset (Big Ticket Shoppers, Lapsed Big Spenders) to cover a
+large, systematic gap the 11 standard rules left behind: low item count
+(f<=2) combined with moderate-to-high spend (m>=3), which is common here
+because frequency (item count, capped at 5 and skewed toward 1) is
+largely independent of monetary value. Before adding those two rules,
+"Other" absorbed ~52% of all customers; an `"Other"` catch-all remains
+for the small residue (~0.4%) of rare `(r, f, m)` combinations none of
+the 13 rules cover — see `label_segment()`'s docstring for the query
+and breakdown that led to this. RFM labeling conventions vary across
+sources, so exact thresholds are one reasonable convention, not an
+authoritative standard.
 """,
 ) as dag:
 
