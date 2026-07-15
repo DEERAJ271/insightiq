@@ -43,3 +43,14 @@ JOIN dim_date d2 ON f.delivered_date_key = d2.date_key
 WHERE f.review_score IS NOT NULL
 GROUP BY f.review_score
 ORDER BY f.review_score;
+
+-- 6. RFM segment summary
+SELECT segment_label,
+       COUNT(*) AS customers,
+       ROUND(AVG(recency_days)::numeric, 1) AS avg_recency,
+       ROUND(AVG(frequency)::numeric, 2) AS avg_frequency,
+       ROUND(AVG(monetary)::numeric, 2) AS avg_spend,
+       ROUND(SUM(monetary)::numeric, 2) AS total_revenue
+FROM customer_rfm_segments
+GROUP BY segment_label
+ORDER BY total_revenue DESC;
