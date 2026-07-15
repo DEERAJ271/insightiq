@@ -4,6 +4,20 @@ Local n8n workflows, running natively (not Docker), automating InsightIQ's
 data validation and ETL orchestration with LLM-generated summaries via
 local Ollama.
 
+## Setup
+
+```bash
+npm install -g n8n
+# Required for Workflow 2's Code node, which calls execSync — n8n
+# disables Node's child_process module by default as a security measure.
+export NODE_FUNCTION_ALLOW_BUILTIN=child_process
+n8n start
+```
+
+UI: `http://localhost:5678` (n8n's default port). Then see "Import"
+below to load the two workflows and point their Postgres credential at
+your local instance.
+
 ## Workflow 1: insightiq-data-validation (Published)
 
 Schedule Trigger → Postgres (checks fact_orders.customer_key for NULLs) →

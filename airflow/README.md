@@ -6,6 +6,28 @@ warehouse and the n8n automation layer (see `n8n/README.md`). 8 DAGs, each
 demonstrating a distinct orchestration pattern rather than all doing the
 same kind of work.
 
+## Setup
+
+```bash
+cd airflow
+docker compose up -d   # airflow-init runs first automatically, then all services
+```
+
+UI: `http://localhost:8080`, default login `airflow` / `airflow`
+(`_AIRFLOW_WWW_USER_USERNAME` / `_AIRFLOW_WWW_USER_PASSWORD` in
+`docker-compose.yaml`, both overridable via `airflow/.env`).
+
+**Every DAG is paused on first load** —
+`AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'` is set explicitly in
+`docker-compose.yaml` — so a fresh DAG will not run on its schedule, and
+`airflow dags trigger` on a paused DAG just queues a run that never
+executes, until it's unpaused in the UI or via
+`docker compose exec airflow-scheduler airflow dags unpause <dag_id>`.
+
+Before any DAG that talks to the project's own Postgres warehouse
+(anything using `PostgresHook` or `etl.*`) will actually run, set up the
+`insightiq_postgres` Connection — see below.
+
 ## DAGs
 
 ### 1. `hello_world` — proof of concept
@@ -209,7 +231,10 @@ non-test DAG carries tags, no cycles, `notify_failure` is wired as
 `on_failure_callback` where expected, and `insightiq_data_validation` has
 its expected task set. These test structure, not business logic — they
 catch the class of failure where a DAG file has a typo or bad import and
-silently fails to load in the UI.
+silently fails to load in the UI. `tests/test_alerting.py` covers
+`notify_failure` itself directly (LLM summary on success, fallback
+message when Ollama is unreachable or returns a malformed response). 12
+tests total, both files, passing as of this writing.
 
 ## Why both n8n and Airflow?
 
