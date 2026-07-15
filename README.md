@@ -27,9 +27,9 @@ Raw CSV --> Python ETL --> Postgres warehouse --> Power BI dashboard
 | Warehouse      | PostgreSQL (star schema)                    |
 | Orchestration  | Apache Airflow (DAGs, retries, scheduling), n8n (visual prototyping) |
 | BI             | Power BI, DAX                               |
-| Retrieval      | LangChain (or LlamaIndex), Chroma           |
-| LLM            | Claude API (Anthropic)                      |
-| App layer      | FastAPI + Streamlit                         |
+| Retrieval      | LangChain, Chroma, HuggingFace embeddings   |
+| LLM            | Claude API (Anthropic) or local Ollama (llama3.2) — switchable via `LLM_BACKEND`, default `ollama` |
+| App layer      | Streamlit                                   |
 | Dev workflow   | Claude Code (VS Code)                       |
 
 ## Dataset
@@ -59,6 +59,9 @@ pip install -r requirements.txt
 cp .env.example .env              # fill in DATABASE_URL and ANTHROPIC_API_KEY
 
 # 2. Database
+# If your local Postgres isn't on the default port 5432 (e.g. this
+# repo's own dev instance runs on 5544 — see .env.example), pass
+# -p <port> to both commands below and match it in DATABASE_URL.
 createdb insightiq
 psql insightiq -f sql/schema.sql
 
