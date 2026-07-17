@@ -14,5 +14,5 @@ For fact_orders, dim_customer, dim_product, dim_seller:
 
 Present as a concise table per table, not raw dumps. End with a 3-bullet
 summary of anything that looks like a genuine data quality concern versus
-expected/benign (e.g. a 1.4% uncategorized product bucket is benign and
-already explained; a column that's 40% null is not).
+expected/benign (e.g. a small (~1-2%) uncategorized product bucket is
+typically benign; a column that's 40% null is not).
