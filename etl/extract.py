@@ -1,8 +1,8 @@
 """
 Extract raw CSV files into pandas DataFrames.
 
-TODO (good first Claude Code task): point this at the actual dataset files
-you drop into data/raw/ and add schema validation (column presence, dtypes).
+TODO (good first Claude Code task): add schema validation (column presence,
+dtypes) — filenames below already point at the real dataset in data/raw/.
 """
 import pandas as pd
 from pathlib import Path

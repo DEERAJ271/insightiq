@@ -1,8 +1,9 @@
 """
 Load cleaned DataFrames into Postgres.
 
-TODO (good Claude Code task): add upsert logic (ON CONFLICT DO UPDATE) so
-re-running the pipeline is idempotent, instead of the naive replace below.
+Idempotent re-runs are handled at the pipeline level, not here: run_pipeline.py's
+_truncate_all() truncates every table (RESTART IDENTITY CASCADE) before this
+module's load_table() appends the freshly transformed data back in.
 """
 import os
 import pandas as pd

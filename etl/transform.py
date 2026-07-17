@@ -1,11 +1,9 @@
 """
 Clean and reshape raw DataFrames into the star schema defined in sql/schema.sql.
 
-TODO (good Claude Code tasks):
-- Handle missing values per column (document the decision, don't just dropna blindly)
-- Deduplicate on natural keys
-- Build the dim_date table by generating a date range covering the order dates
-- Add data quality assertions (e.g. no negative prices, valid state codes)
+TODO (good Claude Code task): add data quality assertions (e.g. no negative
+prices, valid state codes) — etl/validate.py currently checks referential
+integrity, freight outliers, and review-score range, but not these.
 """
 import pandas as pd
 

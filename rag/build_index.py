@@ -57,7 +57,10 @@ estimated_date_key depending on which date matters for the question.
 Business terms:
 AOV = average order value = total revenue / number of orders.
 SLA breach = delivered_date_key > estimated_date_key.
-Repeat customer = customer with more than one distinct order_id.
+Repeat customer = customer with more than one distinct order_id. Note: in
+this dataset customer_id is order-scoped (one customer row per order), so
+the repeat customer rate is always 0% here — a dataset limitation, not a
+business fact.
 """
 
 
