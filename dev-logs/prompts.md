@@ -1221,3 +1221,64 @@ signal rather than reflecting it — a judgment call made and explained
 in the moment rather than looped back to the user, since it was an
 implementation-quality decision within the already-agreed "redefine
 frequency" direction, not a new fork.
+
+---
+
+## 2026-07-15 — RFM: "Other" catch-all was absorbing 52% of customers
+
+**Prompt:** "Before calling the 11-segment RFM scheme done, check how
+many customers `label_segment()` is actually putting into the
+`'Other'` catch-all we added in the last fix — if it's more than a
+rounding-error residual, we need to know why before shipping this."
+
+**Output:** Queried `customer_rfm_segments` directly rather than
+trusting the "`Other` is a deliberate fallback for whatever falls
+through" assumption written into `label_segment()`'s own docstring on
+2026-07-14. That assumption was wrong: `Other` was **51,095 of 98,666
+customers (~52%)** — not a residual, the single largest segment by a
+wide margin, larger than all 11 named segments combined.
+
+Grouped those 51,095 rows by `(r, f, m)` to see whether the gap was
+scattered noise (the "rare cube corner" the fallback was designed for)
+or a real pattern. It wasn't scattered: **93% of `Other`** shared one
+signature — `f<=2` (low item count) combined with `m>=3`
+(moderate-to-high spend) — spread evenly across *every* recency value.
+Root cause: all 11 standard RFM rules implicitly assume frequency and
+monetary move together (a customer who buys often also spends a lot).
+That assumption doesn't hold in this warehouse, where frequency is
+item count capped at 5 and skewed heavily toward 1 (see the
+2026-07-14 entry) — so a customer can trivially have low frequency and
+high spend at the same time (one expensive item), and none of the 11
+rules were written to catch that combination at any recency level.
+
+This is the second time this exact class of bug has shown up in this
+DAG: a bucket assumed to be a small, uninteresting residual — first
+the rank-based quintile bins on 2026-07-14 ("5 balanced bins on
+paper," actually 4 identical, fabricated signal), now `Other` itself
+("a deliberate fallback for whatever falls through," actually the
+majority segment) — turns out, once someone actually queries what's
+inside it, to be hiding real, patterned, majority-share data rather
+than genuine edge cases. In both cases the bug wasn't in the rule
+logic itself, which worked exactly as written; it was in never
+checking the size and contents of the bucket everything not explicitly
+handled falls into.
+
+Added two dataset-specific rules ahead of the `Other` fallback,
+split by recency so they stay actionable rather than just relabeling
+the same lump: `r>=3, f<=2, m>=3` → "Big Ticket Shoppers" (recent
+low-frequency, high-spend — a nurture/upsell target), `r<=2, f<=2,
+m>=3` → "Lapsed Big Spenders" (same profile, gone quiet — a win-back
+target). Re-ran against the live warehouse: `Other` dropped from ~52%
+to **~0.4%** (a genuine scattered residual across dozens of rare
+`(r,f,m)` cells, each a handful of customers) — confirmed by
+re-querying and grouping the new `Other` rows the same way, this time
+finding no dominant shared pattern. Updated `label_segment()`'s
+docstring and `airflow/README.md` with the query and breakdown that
+led to the two new rules, so the reasoning is visible next to the code
+rather than only in this log.
+
+**Edit:** None — used as-is. The two new rules and their exact
+thresholds came directly from grouping the real `Other` rows, not from
+a standard RFM reference — flagged in both the docstring and
+`airflow/README.md` as dataset-specific additions on top of the
+standard 11-segment scheme, not part of any canonical convention.
