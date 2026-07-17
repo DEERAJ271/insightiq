@@ -15,7 +15,7 @@ Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned
 5. **A routing bug found only through live testing.** `needs_sql()` used substring matching against keywords, so "what counts as a repeat customer?" false-matched "count" and got routed to NL2SQL instead of RAG. Fixed with word-boundary regex matching, verified against both the original false positive and a negative control ("accounting discrepancies").
 
 ## 4. Tech stack
-Python, pandas, SQLAlchemy, PostgreSQL, Apache Airflow, n8n, Power BI/DAX, LangChain, Chroma, Claude API (Anthropic), Ollama (llama3.2), FastAPI, Streamlit, pytest, Docker Compose, Great Expectations
+Python, pandas, SQLAlchemy, PostgreSQL, Apache Airflow, n8n, Power BI/DAX, LangChain, Chroma, HuggingFace embeddings, Claude API (Anthropic), Ollama (llama3.2), Streamlit, pytest, Docker Compose, Great Expectations
 
 ## 5. Numbers that matter
 - **fact_orders**: 102,425 rows · **dim_customer**: 99,441 · **dim_product**: 32,951 · **dim_seller**: 3,095 · **dim_date**: 799
