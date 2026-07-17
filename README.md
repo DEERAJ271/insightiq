@@ -89,8 +89,9 @@ measures.
   suite, and RFM customer segmentation. See `airflow/README.md` for
   setup, the Postgres connection config, and container-networking notes.
 - **`n8n/`** — n8n workflows for fast, visual prototyping of the same
-  ETL-orchestration, data-validation, and RFM-alerting ideas, built first
-  and kept alongside Airflow rather than replaced by it. See `n8n/README.md`.
+  ETL-orchestration, data-validation, RFM-alerting, and category-revenue
+  reporting ideas, built first and kept alongside Airflow rather than
+  replaced by it. See `n8n/README.md`.
 
 ## Project structure
 

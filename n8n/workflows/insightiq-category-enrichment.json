@@ -1,0 +1,62 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-48, 144],
+      "id": "64991c10-684f-464e-9e49-8da63d81dbb9",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.category, COUNT(DISTINCT f.order_id) as orders, SUM(f.price) as revenue\nFROM fact_orders f\nJOIN dim_product p ON f.product_key = p.product_key\nGROUP BY p.category;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [160, 144],
+      "id": "06ef7249-10a0-4303-905e-26fb0735288b",
+      "name": "Get Category Revenue",
+      "credentials": {
+        "postgres": {"id": "OQ3KW2ThSmYifMTz", "name": "Postgres account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collapse the per-category rows into one summary item: each category's\n// share of total revenue AND share of total orders (so a category with a\n// revenue share well above its order share = unusually high average order\n// value, and vice versa — that divergence is what \"surprisingly high/low\n// revenue share\" means downstream, not revenue share in isolation).\nconst rows = $input.all().map(item => item.json);\n\nconst totalRevenue = rows.reduce((sum, r) => sum + Number(r.revenue), 0);\nconst totalOrders = rows.reduce((sum, r) => sum + Number(r.orders), 0);\n\nconst categories = rows\n  .map(r => {\n    const revenue = Number(r.revenue);\n    const orders = Number(r.orders);\n    return {\n      // dim_product.category is NULL for ~1-2% of products (no category\n      // assigned in the source data) — label it rather than emit `null`\n      // into the prompt.\n      category: r.category === null ? 'Uncategorized' : r.category,\n      orders,\n      revenue: Math.round(revenue * 100) / 100,\n      revenue_share_pct: totalRevenue > 0 ? Math.round((revenue / totalRevenue) * 10000) / 100 : 0,\n      orders_share_pct: totalOrders > 0 ? Math.round((orders / totalOrders) * 10000) / 100 : 0,\n    };\n  })\n  .sort((a, b) => b.revenue - a.revenue);\n\nreturn [{\n  json: {\n    total_revenue: Math.round(totalRevenue * 100) / 100,\n    total_orders: totalOrders,\n    category_count: categories.length,\n    categories,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [368, 144],
+      "id": "c73b01bb-5c14-41ab-a8c7-099c95e66643",
+      "name": "Summarize Category Revenue"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3.2\",\n  \"prompt\": \"Here is a revenue breakdown by product category from an e-commerce warehouse, sorted by revenue descending. Each category shows its share of total revenue and share of total orders: {{ JSON.stringify($json.categories) }}. Total revenue: {{ $json.total_revenue }}, total orders: {{ $json.total_orders }}. Write a 3-sentence narrative highlighting (1) the top category by revenue, and (2) any category whose revenue share is surprisingly high or low relative to its order share (i.e. unusually high or low average order value for that category).\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [576, 144],
+      "id": "472bb07a-e666-4612-8234-4b9759e69ed7",
+      "name": "HTTP Request"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {"main": [[{"node": "Get Category Revenue", "type": "main", "index": 0}]]},
+    "Get Category Revenue": {"main": [[{"node": "Summarize Category Revenue", "type": "main", "index": 0}]]},
+    "Summarize Category Revenue": {"main": [[{"node": "HTTP Request", "type": "main", "index": 0}]]}
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2d662c9af7941d2bd3e3f17a5f0c492439365f74bad8a77f9c69b61422506df9"
+  }
+}
