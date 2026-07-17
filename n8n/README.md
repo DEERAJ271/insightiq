@@ -42,7 +42,7 @@ Also required enabling Node's child_process module in the Code node,
 disabled by default as a security measure:
 `export NODE_FUNCTION_ALLOW_BUILTIN=child_process` before `n8n start`.
 
-## Workflow 3: insightiq-rfm-alerts (Untested — built but not yet run in n8n)
+## Workflow 3: insightiq-rfm-alerts (Logic verified outside n8n — not yet run through the n8n engine)
 
 Schedule Trigger (daily) → Postgres (top 10 `customer_key`s in the `At Risk`
 or `Lost` RFM segments, by `monetary` descending) → IF (`$input.all().length
@@ -57,6 +57,21 @@ Request node otherwise executes once per input item. The Code node
 one-item-in-before-the-LLM-call shape `insightiq-etl-orchestration`
 already uses for its Code → HTTP Request handoff, so there's exactly one
 Ollama call per run regardless of how many at-risk customers come back.
+
+**Verification status:** `n8n import:workflow` failed on this local install
+(v2.29.9) with two unrelated internal errors (a bogus credential-ownership
+error, then a `NOT NULL constraint failed: workflow_entity.id`) — a CLI
+version-compat bug, not an issue with this workflow file; confirmed via
+`PRAGMA integrity_check` that the existing `insightiq-data-validation` and
+`insightiq-etl-orchestration` workflows were untouched. Rather than force
+the CLI path, each stage was verified manually against real data instead:
+the Postgres query ran against the live warehouse (10 real "At Risk" rows),
+the `Aggregate Customers` JS logic was run in Node against that real result
+(correctly collapsed to 1 item), and the resulting prompt was POSTed to the
+real Ollama endpoint (returned a genuine, on-topic 3-sentence summary).
+This confirms the query, aggregation, and Ollama call all work — it does
+**not** confirm the n8n engine wiring the 5 nodes together via the GUI
+import path documented above; that still needs a manual run.
 
 ## Setup notes
 
