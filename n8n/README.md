@@ -1,8 +1,8 @@
 # n8n Automation Layer
 
 Local n8n workflows, running natively (not Docker), automating InsightIQ's
-data validation and ETL orchestration with LLM-generated summaries via
-local Ollama.
+data validation, ETL orchestration, and RFM-based retention alerting with
+LLM-generated summaries via local Ollama.
 
 ## Setup
 
@@ -15,7 +15,7 @@ n8n start
 ```
 
 UI: `http://localhost:5678` (n8n's default port). Then see "Import"
-below to load the two workflows and point their Postgres credential at
+below to load the three workflows and point their Postgres credential at
 your local instance.
 
 ## Workflow 1: insightiq-data-validation (Published)
@@ -41,6 +41,22 @@ calling the venv's Python binary directly by path instead:
 Also required enabling Node's child_process module in the Code node,
 disabled by default as a security measure:
 `export NODE_FUNCTION_ALLOW_BUILTIN=child_process` before `n8n start`.
+
+## Workflow 3: insightiq-rfm-alerts (Untested — built but not yet run in n8n)
+
+Schedule Trigger (daily) → Postgres (top 10 `customer_key`s in the `At Risk`
+or `Lost` RFM segments, by `monetary` descending) → IF (`$input.all().length
+> 0`, so nothing downstream fires on an empty result) → Code node → Ollama
+(llama3.2) generates a 2-3 sentence retention-focused summary.
+
+The Postgres node can return up to 10 rows, but the goal is *one* summary
+covering the whole list, not one Ollama call per customer — and n8n's HTTP
+Request node otherwise executes once per input item. The Code node
+(`Aggregate Customers`) collapses all rows into a single item
+(`{ customers: [...] }`) before the HTTP Request node, the same
+one-item-in-before-the-LLM-call shape `insightiq-etl-orchestration`
+already uses for its Code → HTTP Request handoff, so there's exactly one
+Ollama call per run regardless of how many at-risk customers come back.
 
 ## Setup notes
 
