@@ -1,7 +1,7 @@
 """
 Hybrid chatbot: routes a question to NL2SQL (for numeric/warehouse questions)
-and/or RAG (for definitional/contextual questions), then asks Claude to
-compose a final answer.
+and/or RAG (for definitional/contextual questions), then asks Claude or a
+local Ollama model (whichever LLM_BACKEND selects) to compose a final answer.
 
 TODO (good Claude Code task): replace the naive keyword router with a
 Claude-based classifier call, and support questions that need BOTH paths
@@ -14,7 +14,7 @@ import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from llm.nl2sql import answer_numeric_question, SQLExecutionError, SQL_GENERATION_FAILURE_MESSAGE
+from llm.nl2sql import answer_numeric_question, SQLExecutionError, sql_generation_failure_message
 from rag.query_engine import retrieve_context
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ def answer(question: str) -> str:
             "answer.\nQuestion: %s\nBackend: %s\nResponse: %s",
             question, LLM_BACKEND, result,
         )
-        return SQL_GENERATION_FAILURE_MESSAGE
+        return sql_generation_failure_message()
 
     return result
 

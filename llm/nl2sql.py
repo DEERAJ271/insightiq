@@ -2,9 +2,9 @@
 Translates a natural-language question into a SQL query against the
 InsightIQ warehouse, using Claude, then executes it read-only.
 
-TODO (good Claude Code task): add a validation step that rejects
-non-SELECT statements before execution, and a retry loop that feeds the
-error back to Claude if the generated SQL fails.
+TODO (good Claude Code task): add a retry loop that feeds the execution
+error back to the model if the generated SQL fails to run (run_query()
+already rejects non-SELECT statements before execution).
 """
 import logging
 import os
@@ -74,11 +74,25 @@ def generate_sql(question: str) -> str:
     return response.content[0].text.strip()
 
 
-SQL_GENERATION_FAILURE_MESSAGE = (
+OLLAMA_SQL_GENERATION_FAILURE_MESSAGE = (
     "The generated SQL was invalid. This is a known limitation of the "
     "local Ollama model (llama3.2) used for zero-cost development "
     "testing; production Claude generates more reliable SQL."
 )
+ANTHROPIC_SQL_GENERATION_FAILURE_MESSAGE = (
+    "The generated SQL was invalid and could not be executed against the "
+    "warehouse. Check the logged SQL and error for details — this may "
+    "indicate a schema mismatch or an edge case in the question."
+)
+
+
+def sql_generation_failure_message() -> str:
+    """User-facing message for a failed query, worded for whichever
+    backend actually generated the SQL (LLM_BACKEND can change at runtime,
+    so this can't be a fixed module-level constant)."""
+    if LLM_BACKEND == "ollama":
+        return OLLAMA_SQL_GENERATION_FAILURE_MESSAGE
+    return ANTHROPIC_SQL_GENERATION_FAILURE_MESSAGE
 
 
 class SQLExecutionError(Exception):
@@ -94,7 +108,7 @@ def run_query(sql: str) -> pd.DataFrame:
             return pd.read_sql(text(sql), conn)
     except (SQLAlchemyError, DatabaseError) as e:
         logger.error("SQL execution failed.\nSQL: %s\nError: %s", sql, e)
-        raise SQLExecutionError(SQL_GENERATION_FAILURE_MESSAGE) from e
+        raise SQLExecutionError(sql_generation_failure_message()) from e
 
 
 def answer_numeric_question(question: str) -> tuple[str, pd.DataFrame]:
