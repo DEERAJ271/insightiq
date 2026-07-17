@@ -24,6 +24,11 @@ GROUP BY c.state
 ORDER BY sla_breach_pct DESC;
 
 -- 4. Repeat customer rate
+-- NOTE: always returns 0% on this dataset. customer_id here is order-scoped
+-- (one customer row per order), not a persistent shopper ID carried across
+-- repeat purchases, so no customer_key can ever have order_count > 1. This
+-- is a dataset limitation, not a query bug — see dev-logs/prompts.md and
+-- airflow/README.md's RFM segmentation DAG for the same quirk.
 SELECT
     COUNT(*) FILTER (WHERE order_count > 1) AS repeat_customers,
     COUNT(*) AS total_customers,
