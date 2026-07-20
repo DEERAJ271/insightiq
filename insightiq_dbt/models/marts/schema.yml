@@ -13,3 +13,41 @@ models:
         description: Number of orders in the category.
         tests:
           - not_null
+
+  - name: mart_customer_segments
+    description: RFM customer segments as produced by the insightiq_rfm_segmentation DAG, exposed unchanged for lineage/testing.
+    columns:
+      - name: customer_key
+        description: Foreign key to dim_customer.
+        tests:
+          - not_null
+      - name: segment_label
+        description: RFM segment label assigned by label_segment() in the insightiq_rfm_segmentation DAG.
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "Champions"
+                  - "Loyal Customers"
+                  - "Potential Loyalists"
+                  - "New Customers"
+                  - "Promising"
+                  - "Needs Attention"
+                  - "About to Sleep"
+                  - "At Risk"
+                  - "Can''t Lose Them"
+                  - "Lost"
+                  - "Hibernating"
+                  - "Big Ticket Shoppers"
+                  - "Lapsed Big Spenders"
+                  - "Other"
+
+  - name: mart_delivery_performance
+    description: Per-state order count, SLA breach count (delivered after estimated date), and breach percentage.
+    columns:
+      - name: state
+        description: Customer state from dim_customer.
+        tests:
+          - not_null
+      - name: breach_percentage
+        description: Percentage of orders delivered after their estimated date, for this state.
