@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: mart_category_performance
+    description: Order count, average price, average freight, and total revenue aggregated per product category.
+    columns:
+      - name: category
+        description: Product category from dim_product.
+        tests:
+          - not_null
+          - unique
+      - name: order_count
+        description: Number of orders in the category.
+        tests:
+          - not_null
