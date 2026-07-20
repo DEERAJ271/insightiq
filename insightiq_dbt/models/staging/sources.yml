@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: insightiq
+    schema: public
+    tables:
+      - name: fact_orders
+      - name: dim_customer
+      - name: dim_product
+      - name: dim_seller
+      - name: dim_date
+      - name: category_summary
+      - name: customer_rfm_segments
