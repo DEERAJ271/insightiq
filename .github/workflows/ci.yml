@@ -44,4 +44,6 @@ jobs:
         run: psql "$DATABASE_URL" -f sql/schema.sql
 
       - name: Run unit tests
+        env:
+          PYTHONPATH: .
         run: pytest tests/test_transform.py
