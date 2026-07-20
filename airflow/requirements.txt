@@ -4,4 +4,16 @@ psycopg2-binary>=2.9
 python-dotenv>=1.0
 great-expectations>=0.18
 pytest
-numpy>=1.26,<2
+# No <2 upper bound here (unlike the main requirements.txt): that pin
+# exists for local torch/macOS compatibility, which doesn't apply inside
+# the Airflow container (no torch dependency) and blocks the image build
+# outright — apache/airflow:3.3.0 runs Python 3.13, numpy 1.26.4 has no
+# wheel for it and there's no compiler in the container to build from
+# source, while numpy 2.x (already bundled in the base image) installs
+# and works fine.
+numpy>=1.26
+
+# insightiq_dbt_pipeline_dag.py runs dbt via BashOperator, so the CLI
+# needs to be present in the Airflow image itself.
+dbt-core>=1.12,<2
+dbt-postgres>=1.11,<2

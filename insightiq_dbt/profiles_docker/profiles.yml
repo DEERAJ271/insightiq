@@ -1,0 +1,18 @@
+insightiq_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      # dbt run --profiles-dir points here when invoked from inside the
+      # Airflow containers, where "localhost" would resolve to the
+      # container itself rather than the host's Postgres (see
+      # insightiq_real_etl_dag.py's REAL_DB_URL override for the same
+      # issue on the etl/ side). Local Mac dbt runs keep using
+      # insightiq_dbt/profiles.yml (host: localhost) unchanged.
+      host: host.docker.internal
+      port: 5544
+      user: postgres
+      pass: postgres
+      dbname: insightiq
+      schema: public
+      threads: 4
