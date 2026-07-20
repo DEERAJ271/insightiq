@@ -1,8 +1,16 @@
 # n8n Automation Layer
 
+[![CI](https://github.com/DEERAJ271/insightiq/actions/workflows/ci.yml/badge.svg)](https://github.com/DEERAJ271/insightiq/actions/workflows/ci.yml)
+
 Local n8n workflows, running natively (not Docker), automating InsightIQ's
 data validation, ETL orchestration, and RFM-based retention alerting with
 LLM-generated summaries via local Ollama.
+
+Note: the CI badge above covers `tests/test_transform.py` (core Python
+ETL unit tests) only — it does not run or verify the n8n workflows in
+this directory, which require a local n8n + Postgres + Ollama stack not
+available on a standard GitHub Actions runner. See each workflow's
+"Verification status" below for how it was actually validated.
 
 ## Setup
 
