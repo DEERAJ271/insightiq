@@ -2,7 +2,7 @@
 
 Local Apache Airflow 3.3.0 via Docker Compose (CeleryExecutor, Redis,
 Postgres-backed metadata db), running alongside InsightIQ's own Postgres
-warehouse and the n8n automation layer (see `n8n/README.md`). 8 DAGs, each
+warehouse and the n8n automation layer (see `n8n/README.md`). 9 DAGs, each
 demonstrating a distinct orchestration pattern rather than all doing the
 same kind of work.
 
@@ -166,6 +166,64 @@ rules didn't catch and which turned out to be the overwhelming majority
 combinations none of the 13 rules cover — see `label_segment()`'s
 docstring in the DAG file for the query and breakdown behind this, and
 the exact thresholds and ordering.
+
+### 9. `insightiq_dbt_pipeline` — dbt run/test from Airflow
+
+`dbt_run_task` >> `dbt_test_task` >> `summary_task`: builds and tests the
+`insightiq_dbt` project's staging model and three marts
+(`mart_category_performance`, `mart_customer_segments`,
+`mart_delivery_performance`) from inside the Airflow containers, then
+asks Ollama for a plain-English summary of the run. Triggered manually
+(`schedule=None`).
+
+- `dbt_run_task` / `dbt_test_task` are both `BashOperator`s running
+  `cd /opt/insightiq/insightiq_dbt && dbt run` (then `dbt test`) with
+  `--profiles-dir /opt/insightiq/insightiq_dbt/profiles_docker`.
+- `summary_task` doesn't need a separate log file to know what happened:
+  `BashOperator`'s default `do_xcom_push=True` pushes the last line of
+  each command's stdout, which for `dbt run`/`dbt test` is always their
+  own `Done. PASS=.. ERROR=..` summary line. It pulls both via XCom and
+  passes them to Ollama.
+
+**Docker-specific dbt profile.** `insightiq_dbt/profiles.yml` (the
+project default) points `host` at `localhost` — correct for running
+`dbt` from the Mac terminal, wrong from inside a container, where
+`localhost` resolves to the container itself rather than the host's
+Postgres. Same networking pattern as `insightiq_real_etl_dag.py`'s
+`DATABASE_URL` override (see "Container networking" below).
+`insightiq_dbt/profiles_docker/profiles.yml` is identical except for
+`host: host.docker.internal`, and the DAG points `--profiles-dir` at it
+instead.
+
+**Two infrastructure fixes this required**, beyond just adding the
+docker-specific profile:
+
+- `--profiles-dir` is a *directory* flag — dbt only ever looks for a file
+  literally named `profiles.yml` inside whatever directory it's pointed
+  at; there's no way to give it an alternate filename. A naive
+  `profiles_docker.yml` sitting directly in `insightiq_dbt/` would never
+  be picked up and dbt would silently fall back to a missing/wrong
+  profile. The docker profile has to live in its own subdirectory
+  (`insightiq_dbt/profiles_docker/profiles.yml`) instead.
+- `airflow/requirements.txt` didn't include `dbt-core`/`dbt-postgres` at
+  all, so the `dbt` CLI didn't exist in the Airflow image and
+  `dbt_run_task` would fail immediately with "command not found."
+  Adding those also surfaced a second, pre-existing issue: the file's
+  `numpy>=1.26,<2` pin (copied from the main project's
+  requirements.txt, where it exists for local torch/macOS compatibility)
+  broke the image build outright — `apache/airflow:3.3.0` runs Python
+  3.13, numpy 1.26.4 has no wheel for it, and there's no compiler in the
+  container to build one from source, while numpy 2.x (already bundled
+  in the base image) works fine. The pin was relaxed to `numpy>=1.26`
+  for this file only.
+
+Verified end-to-end against the running containers: `dbt_run_task` built
+all 4 models, `dbt_test_task` passed all 7 tests, and `summary_task`
+returned a real Ollama-generated summary (its first run hit the same
+30s Ollama-timeout-on-cold-model-load pattern as
+`insightiq_real_etl_dag.py`'s `summary_task` and `notify_failure` — the
+task still succeeds via the `try/except` fallback text, it just doesn't
+have a real summary that run).
 
 ## Airflow Connection setup
 
