@@ -1,5 +1,7 @@
 # InsightIQ — AI-Augmented Sales Analytics Platform
 
+[![CI](https://github.com/DEERAJ271/insightiq/actions/workflows/ci.yml/badge.svg)](https://github.com/DEERAJ271/insightiq/actions/workflows/ci.yml)
+
 An end-to-end analytics stack: raw e-commerce data flows through a Python ETL
 pipeline into a Postgres warehouse, which feeds a Power BI dashboard and a
 RAG + LLM chatbot for natural-language questions over the data.
@@ -25,11 +27,13 @@ Raw CSV --> Python ETL --> Postgres warehouse --> Power BI dashboard
 |----------------|---------------------------------------------|
 | ETL            | Python, pandas, SQLAlchemy                  |
 | Warehouse      | PostgreSQL (star schema)                    |
+| Transformation | dbt (staging model + marts, run/tested via Airflow) |
 | Orchestration  | Apache Airflow (DAGs, retries, scheduling), n8n (visual prototyping) |
 | BI             | Power BI, DAX                               |
 | Retrieval      | LangChain, Chroma, HuggingFace embeddings   |
 | LLM            | Claude API (Anthropic) or local Ollama (llama3.2) — switchable via `LLM_BACKEND`, default `ollama` |
 | App layer      | Streamlit                                   |
+| CI/CD          | GitHub Actions                              |
 | Dev workflow   | Claude Code (VS Code)                       |
 
 ## Dataset
@@ -82,11 +86,13 @@ measures.
 
 ## Orchestration
 
-- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 8 DAGs
+- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 9 DAGs
   covering the real ETL pipeline (with DAG-to-DAG triggering into a
   validation DAG), parallel data-quality checks, dynamic task mapping,
   a sensor/reschedule-mode demo, a Great Expectations expectation
-  suite, and RFM customer segmentation. See `airflow/README.md` for
+  suite, RFM customer segmentation, and an `insightiq_dbt_pipeline` DAG
+  that runs and tests the `insightiq_dbt` project's staging model and
+  marts inside the Airflow containers. See `airflow/README.md` for
   setup, the Postgres connection config, and container-networking notes.
 - **`n8n/`** — n8n workflows for fast, visual prototyping of the same
   ETL-orchestration, data-validation, RFM-alerting, and category-revenue

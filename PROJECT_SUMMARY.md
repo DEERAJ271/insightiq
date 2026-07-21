@@ -1,10 +1,10 @@
 # InsightIQ — Interview Cheat Sheet
 
 ## 1. Elevator pitch
-InsightIQ is an end-to-end analytics platform: a Python ETL pipeline loads Olist e-commerce data into a Postgres star schema, which feeds a Power BI dashboard and a RAG + NL2SQL chatbot for natural-language questions over the data. Apache Airflow (8 DAGs) and n8n orchestrate the pipeline, validation, and customer segmentation; everything was built and debugged with Claude Code, with the prompt log kept as evidence.
+InsightIQ is an end-to-end analytics platform: a Python ETL pipeline loads Olist e-commerce data into a Postgres star schema, which feeds a Power BI dashboard and a RAG + NL2SQL chatbot for natural-language questions over the data. Apache Airflow (9 DAGs) and n8n orchestrate the pipeline, validation, and customer segmentation, with dbt handling in-warehouse transformation (staging model + marts) run and tested from its own Airflow DAG; everything was built and debugged with Claude Code, with the prompt log kept as evidence and GitHub Actions running CI on every push.
 
 ## 2. Architecture (one paragraph)
-Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned, and loaded by a Python/pandas/SQLAlchemy ETL pipeline into a Postgres star schema (`fact_orders` + `dim_*`). Airflow DAGs own the recurring work on top of that warehouse — the real ETL run itself, parallel data-quality checks (hand-written SQL + a Great Expectations suite), a pandas category-summary rollup, dynamic task-mapped deep dives, and weekly RFM customer segmentation — with one DAG chaining into another via `TriggerDagRunOperator` and LLM-generated (Ollama) failure alerts wired into every DAG that touches real data. n8n hosts an earlier, still-maintained visual-prototype version of the same ETL/validation/alerting/reporting ideas. On the consumption side, Power BI reads the warehouse directly for dashboards, and a Streamlit app routes natural-language questions through a chatbot that picks between NL2SQL (Postgres) and RAG (Chroma + LangChain) depending on the question, backed by either Claude or local Ollama depending on `LLM_BACKEND`.
+Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned, and loaded by a Python/pandas/SQLAlchemy ETL pipeline into a Postgres star schema (`fact_orders` + `dim_*`). Airflow DAGs own the recurring work on top of that warehouse — the real ETL run itself, parallel data-quality checks (hand-written SQL + a Great Expectations suite), a pandas category-summary rollup, dynamic task-mapped deep dives, weekly RFM customer segmentation, and an `insightiq_dbt_pipeline` DAG that runs and tests the `insightiq_dbt` project's staging model and marts — with one DAG chaining into another via `TriggerDagRunOperator` and LLM-generated (Ollama) failure alerts wired into every DAG that touches real data. n8n hosts an earlier, still-maintained visual-prototype version of the same ETL/validation/alerting/reporting ideas. On the consumption side, Power BI reads the warehouse directly for dashboards, and a Streamlit app routes natural-language questions through a chatbot that picks between NL2SQL (Postgres) and RAG (Chroma + LangChain) depending on the question, backed by either Claude or local Ollama depending on `LLM_BACKEND`.
 
 ## 3. Five best "bug you fixed" stories
 
@@ -15,14 +15,15 @@ Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned
 5. **A routing bug found only through live testing.** `needs_sql()` used substring matching against keywords, so "what counts as a repeat customer?" false-matched "count" and got routed to NL2SQL instead of RAG. Fixed with word-boundary regex matching, verified against both the original false positive and a negative control ("accounting discrepancies").
 
 ## 4. Tech stack
-Python, pandas, SQLAlchemy, PostgreSQL, Apache Airflow, n8n, Power BI/DAX, LangChain, Chroma, HuggingFace embeddings, Claude API (Anthropic), Ollama (llama3.2), Streamlit, pytest, Docker Compose, Great Expectations
+Python, pandas, SQLAlchemy, PostgreSQL, dbt, Apache Airflow, n8n, Power BI/DAX, LangChain, Chroma, HuggingFace embeddings, Claude API (Anthropic), Ollama (llama3.2), Streamlit, pytest, Docker Compose, Great Expectations, GitHub Actions
 
 ## 5. Numbers that matter
 - **fact_orders**: 102,425 rows · **dim_customer**: 99,441 · **dim_product**: 32,951 · **dim_seller**: 3,095 · **dim_date**: 799
 - **customer_rfm_segments**: 98,666 rows · **category_summary**: 73 rows
-- **Airflow DAGs**: 8
+- **Airflow DAGs**: 9
 - **Tests**: 14 passing (12 Airflow/`pytest tests/` in `airflow/`, 2 in root `tests/`)
 - **Custom Claude Code commands/skills**: 16 (`.claude/commands/`)
+- **Dev log entries**: 39 (`dev-logs/prompts.md`)
 
 ## 6. Three things to improve given more time
 1. **Silent-wrong-answer detection in NL2SQL.** The pipeline gracefully handles SQL that *fails* to execute, but has no way to catch SQL that executes successfully and returns a confidently wrong or non-answer — the harder, more general NL2SQL correctness problem.
