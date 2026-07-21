@@ -174,6 +174,38 @@ not a pipeline bug, consistent with the `llama3.2`-is-for-pipeline-testing-only
 stance already documented in this file. Does not confirm the n8n engine
 actually wiring these 5 nodes together via the GUI trigger path.
 
+## Workflow 6: insightiq-system-health (Tested via n8n CLI)
+
+Manual Trigger → Postgres (`SELECT COUNT(*) as order_count,
+MAX(order_date_key) as last_update FROM fact_orders JOIN dim_date...`)
+→ Get Airflow Token (JWT auth via `POST /auth/token`) → Get DAG Runs
+(latest 5 `insightiq_real_etl` runs, `limit=5&order_by=-start_date`).
+There's no summarization step after `Get DAG Runs` — that's genuinely
+the last node in this workflow (its output isn't wired to anything),
+so unlike the other workflows here it returns raw warehouse + DAG-run
+data rather than an Ollama-generated narrative. A quick two-signal
+health check (is the warehouse populated, did the ETL DAG's recent runs
+succeed) rather than a stakeholder-facing report.
+
+**Verification status:** Published — this workflow was already present
+in this machine's n8n database (imported in an earlier session, unlike
+Workflows 3-5, which hit the same `n8n import:workflow` CLI bug and were
+never imported). n8n's GUI still requires this machine's real sign-in
+credentials, which weren't used to click "Execute workflow" in the
+browser, but `n8n execute --id=QCEtfpygByehyK1C` runs an already-imported
+workflow through the real n8n engine without needing that login, so this
+one got a genuine engine-level test rather than the manual
+stage-by-stage workaround used for Workflows 3-5. All 4 nodes reported
+`executionStatus: "success"`: the Postgres query returned real warehouse
+state (`order_count: 102425, last_update: 20180903`), the Airflow token
+exchange succeeded, and `Get DAG Runs` returned the real 5 most recent
+`insightiq_real_etl` runs (4 `success`, 1 `failed` — an actual past
+failure from this DAG's history, correctly surfaced rather than
+filtered out). Confirms the n8n engine executing and chaining all 4
+nodes for real; does not confirm the GUI's own "Execute workflow" button
+specifically, since that path still needs the real sign-in this machine
+has configured.
+
 ## Setup notes
 
 - n8n runs natively via npm — Docker-to-Docker networking to Postgres was
