@@ -15,6 +15,7 @@ is itself worth reading score_frequency()'s docstring for before
 assuming a plain pd.qcut quintile would work here.
 """
 import pandas as pd
+from sqlalchemy import text
 
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -182,7 +183,17 @@ def build_rfm_segments(**context):
     ]].copy()
     result["monetary"] = result["monetary"].round(2)
 
-    result.to_sql("customer_rfm_segments", engine, if_exists="replace", index=False)
+    # TRUNCATE + append instead of to_sql(if_exists="replace"): "replace"
+    # does a DROP TABLE, which fails once mart_customer_segments (a dbt
+    # view) depends on this table. TRUNCATE clears the rows without
+    # dropping the table, so the dependent view stays valid.
+    with engine.begin() as conn:
+        table_exists = conn.execute(
+            text("SELECT to_regclass('public.customer_rfm_segments')")
+        ).scalar() is not None
+        if table_exists:
+            conn.execute(text("TRUNCATE TABLE customer_rfm_segments"))
+    result.to_sql("customer_rfm_segments", engine, if_exists="append", index=False)
 
     print(f"Wrote {len(result)} customer RFM segment rows")
     print("Segment label distribution:")
@@ -204,8 +215,9 @@ Computes per-customer RFM (Recency, Frequency, Monetary) scores from
 `fact_orders` joined to `dim_date`, and writes the result to
 `customer_rfm_segments` (`customer_key`, `recency_days`, `frequency`,
 `monetary`, `r_score`, `f_score`, `m_score`, `rfm_segment`,
-`segment_label`) via `to_sql(..., if_exists="replace")`. Runs on a
-weekly schedule (`@weekly`).
+`segment_label`), truncating and re-inserting rather than dropping the
+table so `mart_customer_segments` (a dbt view over this table) doesn't
+break. Runs on a weekly schedule (`@weekly`).
 
 - **Recency**: days since each customer's most recent order, relative
   to the most recent order date in the whole dataset (this is
