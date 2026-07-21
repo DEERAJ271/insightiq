@@ -1,0 +1,137 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2aac676b-4f97-4f3f-9115-7c3a28100118",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8080/auth/token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"username\": \"airflow\",\n  \"password\": \"airflow\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "0149334f-3c57-4423-ad23-0b30b81657ab",
+      "name": "Get Airflow Token"
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/api/v2/dags/insightiq_dbt_pipeline/dagRuns?limit=1&order_by=-start_date",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get Airflow Token').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "54671b09-26f7-4e7d-973a-e676e6f7455b",
+      "name": "Get DAG Runs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst summaryText = `dbt pipeline status: ${JSON.stringify(data)}. Write a 1-2 sentence status summary for a data engineer.`;\n\nconst bodyObject = {\n  model: \"llama3.2\",\n  prompt: summaryText,\n  stream: false\n};\n\nreturn {\n  json: {\n    request_body: JSON.stringify(bodyObject)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "3446c7bc-42ef-4cec-b799-68ebfe2bd212",
+      "name": "Prepare Summary Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        832,
+        0
+      ],
+      "id": "12f36836-16ab-4b88-bad1-67e739337aed",
+      "name": "Ollama HTTP Request"
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get Airflow Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Airflow Token": {
+      "main": [
+        [
+          {
+            "node": "Get DAG Runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DAG Runs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Summary Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Summary Request": {
+      "main": [
+        [
+          {
+            "node": "Ollama HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "2d662c9af7941d2bd3e3f17a5f0c492439365f74bad8a77f9c69b61422506df9"
+  }
+}
