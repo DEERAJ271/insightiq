@@ -11,6 +11,10 @@ numpy>=1.26,<2
 # ETL / data quality
 openpyxl>=3.1
 great-expectations>=0.18  # optional: swap for lightweight custom checks if too heavy
+# snowflake-sqlalchemy>=1.6  # optional: only needed for etl/load_snowflake.py
+# (run_pipeline.py --target snowflake/both). Commented out by default since
+# no Snowflake account is configured in this environment and the module is
+# untested against a live connection — uncomment once you have credentials.
 
 # RAG
 langchain>=0.2
