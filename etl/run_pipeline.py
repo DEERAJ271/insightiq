@@ -1,9 +1,11 @@
 """
 Orchestrates extract -> transform -> load.
 
-Run with: python etl/run_pipeline.py [--mode full|incremental]
+Run with: python etl/run_pipeline.py [--mode full|incremental] [--target postgres|snowflake|both]
 """
 import argparse
+import os
+import sys
 import pandas as pd
 from sqlalchemy import text
 from etl.extract import extract_all
@@ -12,6 +14,22 @@ from etl.transform import (
     build_dim_date, build_fact_orders,
 )
 from etl.load import load_table, get_engine
+
+
+def _load_to_targets(df, table_name, if_exists, target):
+    """Write df to whichever warehouse(s) --target selects.
+
+    High-water-mark decisions (MAX(order_date_key), existing dim keys)
+    always read from Postgres regardless of target — Postgres remains
+    the reference warehouse driving "what's new" in incremental mode.
+    This only fans the resulting write out to Snowflake as well, when
+    asked to.
+    """
+    if target in ("postgres", "both"):
+        load_table(df, table_name, if_exists=if_exists)
+    if target in ("snowflake", "both"):
+        from etl.load_snowflake import load_table as load_table_snowflake
+        load_table_snowflake(df, table_name, if_exists=if_exists)
 
 
 def _assign_key(df, key_col):
@@ -36,7 +54,7 @@ def _max_order_date_key(engine) -> int | None:
         return conn.execute(text("SELECT MAX(order_date_key) FROM fact_orders")).scalar()
 
 
-def _upsert_dim(engine, cleaned_df, id_col, key_col, table_name):
+def _upsert_dim(engine, cleaned_df, id_col, key_col, table_name, target="postgres"):
     """Insert only the rows in cleaned_df not already present in table_name
     (matched on id_col), assigning new surrogate keys after the current
     MAX(key_col). Returns an (id_col, key_col) DataFrame covering every row
@@ -58,7 +76,7 @@ def _upsert_dim(engine, cleaned_df, id_col, key_col, table_name):
     start = (existing[key_col].max() if not existing.empty else 0) + 1
     new_rows = new_rows.copy()
     new_rows.insert(0, key_col, range(start, start + len(new_rows)))
-    load_table(new_rows, table_name, if_exists="append")
+    _load_to_targets(new_rows, table_name, "append", target)
 
     return pd.concat(
         [existing[[id_col, key_col]], new_rows[[id_col, key_col]]],
@@ -66,7 +84,7 @@ def _upsert_dim(engine, cleaned_df, id_col, key_col, table_name):
     )
 
 
-def _upsert_dim_date(engine, needed_dates: pd.Series) -> None:
+def _upsert_dim_date(engine, needed_dates: pd.Series, target="postgres") -> None:
     needed_dates = needed_dates.dropna()
     if needed_dates.empty:
         print("No dates to add to dim_date")
@@ -79,11 +97,18 @@ def _upsert_dim_date(engine, needed_dates: pd.Series) -> None:
     if new_dates.empty:
         print("No new rows for dim_date")
         return
-    load_table(new_dates, "dim_date", if_exists="append")
+    _load_to_targets(new_dates, "dim_date", "append", target)
 
 
-def run_full():
-    """Truncate every table and reload it from the source CSVs."""
+def run_full(target="postgres"):
+    """Truncate every table and reload it from the source CSVs.
+
+    Truncation only ever happens against Postgres (the reference
+    warehouse) — --target snowflake/both does not truncate Snowflake
+    first, so repeated full runs against Snowflake will duplicate rows
+    until that's addressed; this hasn't come up yet since there's no
+    live Snowflake account to run against.
+    """
     print("Truncating existing data...")
     _truncate_all(get_engine())
 
@@ -106,17 +131,17 @@ def run_full():
     fact = build_fact_orders(orders, raw["order_items"], dim_customer, dim_product, dim_seller, raw["reviews"])
 
     print("Loading...")
-    load_table(dim_date,     "dim_date",     if_exists="append")
-    load_table(dim_customer, "dim_customer", if_exists="append")
-    load_table(dim_seller,   "dim_seller",   if_exists="append")
-    load_table(dim_product,  "dim_product",  if_exists="append")
-    load_table(fact,         "fact_orders",  if_exists="append")
+    _load_to_targets(dim_date,     "dim_date",     "append", target)
+    _load_to_targets(dim_customer, "dim_customer", "append", target)
+    _load_to_targets(dim_seller,   "dim_seller",   "append", target)
+    _load_to_targets(dim_product,  "dim_product",  "append", target)
+    _load_to_targets(fact,         "fact_orders",  "append", target)
 
     print(f"Pipeline complete. Loaded {len(fact)} fact_orders row(s).")
     return len(fact)
 
 
-def run_incremental():
+def run_incremental(target="postgres"):
     """High-water-mark load: only orders newer than the current
     MAX(order_date_key) in fact_orders are extracted, transformed, and
     inserted. Dim tables are never truncated — dim_customer, dim_seller,
@@ -171,15 +196,15 @@ def run_incremental():
     print("Loading new dimension rows (if any)...")
     dim_customer = _upsert_dim(
         engine, dim_customer_clean[dim_customer_clean["customer_id"].isin(new_customer_ids)],
-        "customer_id", "customer_key", "dim_customer",
+        "customer_id", "customer_key", "dim_customer", target,
     )
     dim_seller = _upsert_dim(
         engine, dim_seller_clean[dim_seller_clean["seller_id"].isin(new_seller_ids)],
-        "seller_id", "seller_key", "dim_seller",
+        "seller_id", "seller_key", "dim_seller", target,
     )
     dim_product = _upsert_dim(
         engine, dim_product_clean[dim_product_clean["product_id"].isin(new_product_ids)],
-        "product_id", "product_key", "dim_product",
+        "product_id", "product_key", "dim_product", target,
     )
 
     all_dates = pd.concat([
@@ -187,15 +212,33 @@ def run_incremental():
         new_orders["order_delivered_customer_date"],
         new_orders["order_estimated_delivery_date"],
     ])
-    _upsert_dim_date(engine, all_dates)
+    _upsert_dim_date(engine, all_dates, target)
 
     fact = build_fact_orders(new_orders, order_items, dim_customer, dim_product, dim_seller, raw["reviews"])
 
     print("Loading new fact_orders rows...")
-    load_table(fact, "fact_orders", if_exists="append")
+    _load_to_targets(fact, "fact_orders", "append", target)
 
     print(f"Incremental run complete. Inserted {len(fact)} new fact_orders row(s).")
     return len(fact)
+
+
+def _require_snowflake_configured():
+    """Fail fast with a clear message rather than a raw traceback when
+    --target snowflake/both is requested but Snowflake isn't configured.
+    """
+    if not os.getenv("SNOWFLAKE_ACCOUNT"):
+        print(
+            "ERROR: --target snowflake (and --target both) require Snowflake "
+            "credentials, but SNOWFLAKE_ACCOUNT is not set.\n"
+            "Add SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, "
+            "SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE, and SNOWFLAKE_SCHEMA to "
+            ".env (see .env.example) before using --target snowflake or "
+            "--target both. Falling back to --target postgres if you don't "
+            "have a Snowflake account handy.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def main():
@@ -205,12 +248,21 @@ def main():
         help="full: truncate and reload every table (default). "
              "incremental: high-water-mark load of only new orders.",
     )
+    parser.add_argument(
+        "--target", choices=["postgres", "snowflake", "both"], default="postgres",
+        help="postgres: load into the Postgres warehouse only (default). "
+             "snowflake: load into Snowflake only (see etl/load_snowflake.py — "
+             "untested against a live account). both: load into both.",
+    )
     args = parser.parse_args()
 
+    if args.target in ("snowflake", "both"):
+        _require_snowflake_configured()
+
     if args.mode == "incremental":
-        run_incremental()
+        run_incremental(args.target)
     else:
-        run_full()
+        run_full(args.target)
 
 
 if __name__ == "__main__":
