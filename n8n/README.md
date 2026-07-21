@@ -123,6 +123,57 @@ consistent with this project's llama3.2-is-for-pipeline-testing-only
 stance, not a new finding. Does not confirm the n8n engine wiring the 4
 nodes together via the GUI import path.
 
+## Workflow 5: insightiq-dbt-status (Logic verified outside n8n — not yet run through the n8n engine)
+
+Manual Trigger → Get Airflow Token (JWT auth via `POST /auth/token`,
+since Airflow 3.x's API requires bearer tokens rather than basic auth)
+→ Get DAG Runs (latest `insightiq_dbt_pipeline` run, `limit=1&order_by=-start_date`)
+→ Code node (`Prepare Summary Request`) → Ollama (llama3.2) generates a
+1-2 sentence status summary.
+
+Same pattern as `insightiq-system-health` (auth against Airflow, then
+query its REST API for a DAG's recent run state), but pointed at
+`insightiq_dbt_pipeline` specifically rather than `insightiq_real_etl` —
+independent visibility into whether `dbt run` + `dbt test` succeeded on
+the most recent run, separate from the ETL pipeline's own health.
+
+The `Prepare Summary Request` Code node builds the Ollama HTTP node's
+JSON body via `JSON.stringify(bodyObject)` rather than manually escaping
+quotes in the HTTP node's JSON field directly — the naive approach was
+tried first and produced repeated "invalid JSON" parsing errors, since
+the DAG run response gets embedded in a prompt string that itself needs
+to survive being embedded in a JSON body; stringifying the whole object
+in code sidesteps hand-escaping entirely, the same fix already
+documented in this file's "ETL pipeline output contains raw newlines..."
+setup note.
+
+**Verification status:** `n8n import:workflow` failed on this local
+install (v2.29.9) with the same CLI version-compat bug noted under
+Workflows 3 and 4 (`NOT NULL constraint failed: workflow_entity.id`).
+The workflow was already present in this machine's n8n database from an
+earlier import, though — confirmed its stored node structure matches
+`workflows/insightiq-dbt-status.json` exactly (5 nodes, same names,
+same parameters) — and `PRAGMA integrity_check` still reports `ok`
+after the failed re-import attempt, so nothing was corrupted. n8n's own
+web UI requires this machine's real sign-in credentials, which weren't
+used to check the workflow via the GUI; every stage was instead run for
+real outside the n8n engine: `POST /auth/token` against the live
+Airflow instance returned a genuine bearer token, `GET
+/dags/insightiq_dbt_pipeline/dagRuns?limit=1&order_by=-start_date` with
+that token returned the real latest run (`state: success`, `duration:
+46.62`s), the `Prepare Summary Request` JS was run in Node against that
+real response (produced a `request_body` that round-trips through
+`JSON.parse` without error, confirming the escaping fix works), and
+that body was POSTed to the real Ollama endpoint, which returned a
+genuine 1-2 sentence summary in about 24 seconds. Confirms the token
+exchange, DAG-run query, JSON-escaping fix, and Ollama call all work end
+to end. As with Workflows 3 and 4, llama3.2's summary itself repeated
+this project's known small-numbers-in-a-larger-JSON-blob limitation: it
+read the run's `46.62`-second duration as "46 minutes" — a unit misread,
+not a pipeline bug, consistent with the `llama3.2`-is-for-pipeline-testing-only
+stance already documented in this file. Does not confirm the n8n engine
+actually wiring these 5 nodes together via the GUI trigger path.
+
 ## Setup notes
 
 - n8n runs natively via npm — Docker-to-Docker networking to Postgres was
