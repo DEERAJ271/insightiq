@@ -14,12 +14,12 @@
     everywhere else that answer no longer exists once the next load
     truncates it away.
 
-    Strategy: check_cols instead of timestamp, because
+    Strategy: check (via check_cols) instead of timestamp, because
     customer_rfm_segments (written by insightiq_rfm_segmentation_dag)
     has no updated_at/modified_at column — it's a full truncate +
     append every run, so there's no reliable per-row timestamp to key
-    off of. check_cols compares segment_label and monetary directly on
-    each snapshot run and version the row whenever either changes.
+    off of. check_cols lists which columns to compare on each snapshot
+    run; the row is versioned whenever segment_label or monetary changes.
 #}
 
 {% snapshot customer_rfm_snapshot %}
@@ -28,7 +28,7 @@
     config(
       target_schema='snapshots',
       unique_key='customer_key',
-      strategy='check_cols',
+      strategy='check',
       check_cols=['segment_label', 'monetary'],
     )
 }}
