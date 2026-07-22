@@ -1880,3 +1880,59 @@ file) — noted the discrepancy explicitly rather than reporting a
 single, falsely-tidy number.
 
 **Edit:** None — used as-is.
+
+---
+
+## 2026-07-22 — Document insightiq-pg container creation in README
+
+**Prompt:** "insightiq-pg is referenced by name in Makefile's
+airflow-up target, airflow/README.md, and
+.claude/commands/nl2sql-test.md, but the original docker run command
+that created this container is documented nowhere... Add the original
+docker run command (find it in git history / dev-logs if it's
+recorded, otherwise reconstruct it from the known port mapping
+5544:5432 and credentials) to the root README.md's setup section..."
+
+**Output:** No record of the original command anywhere in git history
+or dev-logs, so reconstructed it from `docker inspect insightiq-pg`'s
+actual live config instead of guessing (image, `POSTGRES_PASSWORD`,
+port `5544:5432`, `--restart unless-stopped`). Tested the exact
+`createdb`/`psql` sequence against a disposable throwaway container
+before writing it into the README — the bare form hung indefinitely
+on an interactive password prompt; fixed with `PGPASSWORD=postgres`
+and re-verified end-to-end. Added a note that `.env`'s `DATABASE_URL`
+port also needs updating to 5544, or step 3 (ETL run) fails silently
+against the wrong port.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-22 — Export insightiq-system-health.json; fix a PII leak in the raw export
+
+**Prompt:** "n8n/README.md states a workflow count that doesn't match
+the actual 5 committed .json files vs 6 documented workflows... Add a
+one-line callout noting this discrepancy explicitly, and export
+insightiq-system-health to n8n/workflows/insightiq-system-health.json
+if possible so the file count matches the documentation."
+
+**Output:** `n8n list:workflow` found the workflow's real ID
+(`QCEtfpygByehyK1C`); `n8n export:workflow --id=... --output=...`
+exported it successfully — the file count now genuinely matches the
+docs, so skipped the requested callout (it would describe a problem
+that no longer existed) and fixed the actual stale count instead
+(`n8n/README.md` still said "four workflows" despite 6 already being
+documented).
+
+The raw CLI export wasn't safe to commit as generated: unlike the
+other 5 committed workflow files (plain `{nodes, connections, pinData,
+meta}`), it included this local install's DB metadata, and its
+`shared` field specifically contained this machine's real name and
+email address via its personal project record. Reshaped by hand to
+match the other files' structure before committing; verified no PII
+or internal IDs remained via a targeted string search.
+
+**Edit:** Stripped `shared`/`sourceWorkflowId`/`versionId`/etc. from
+the raw export rather than committing it as-is — a deliberate
+deviation from "used as generated," made for a real privacy reason,
+not a style preference.
