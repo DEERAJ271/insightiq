@@ -1,0 +1,32 @@
+version: 2
+
+exposures:
+  - name: streamlit_dashboard
+    type: application
+    maturity: high
+    description: >
+      InsightIQ's Streamlit app (app/streamlit_app.py) — hosts the LLM
+      chat panel and the dashboard tab. Built and running today.
+    depends_on:
+      - ref('mart_category_performance')
+      - ref('mart_customer_segments')
+      - ref('mart_delivery_performance')
+    owner:
+      name: Deeraj
+      email: deerajdeepa16@gmail.com
+
+  - name: power_bi_dashboard
+    type: dashboard
+    maturity: low
+    description: >
+      Planned Power BI report over the same marts, meant to be embedded
+      into the Streamlit app's dashboard tab (see the commented-out
+      st.components.v1.iframe call in app/streamlit_app.py). Not yet
+      built — no .pbix file exists in this repo yet.
+    depends_on:
+      - ref('mart_category_performance')
+      - ref('mart_customer_segments')
+      - ref('mart_delivery_performance')
+    owner:
+      name: Deeraj
+      email: deerajdeepa16@gmail.com
