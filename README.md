@@ -64,11 +64,20 @@ pip install -r requirements.txt
 cp .env.example .env              # fill in DATABASE_URL and ANTHROPIC_API_KEY
 
 # 2. Database
-# If your local Postgres isn't on the default port 5432 (e.g. this
-# repo's own dev instance runs on 5544 — see .env.example), pass
-# -p <port> to both commands below and match it in DATABASE_URL.
-createdb insightiq
-psql insightiq -f sql/schema.sql
+# Any local Postgres works. This repo's own dev instance runs in Docker,
+# named insightiq-pg, on port 5544 (not 5432) — the container the
+# Makefile's `airflow-up` target and airflow/README.md's Postgres
+# Connection setup both assume already exists. Skip this docker run if
+# you already have a Postgres instance and just want createdb/psql below
+# to point at it (pass -p <port> to match) — either way, update .env's
+# DATABASE_URL port to match before step 3, or ETL/RAG-build will fail
+# trying to connect to the wrong port.
+docker run -d --name insightiq-pg --restart unless-stopped \
+  -e POSTGRES_PASSWORD=postgres -p 5544:5432 \
+  -v insightiq_pg_data:/var/lib/postgresql postgres
+
+PGPASSWORD=postgres createdb -h localhost -p 5544 -U postgres insightiq
+PGPASSWORD=postgres psql -h localhost -p 5544 -U postgres insightiq -f sql/schema.sql
 
 # 3. Run ETL
 python etl/run_pipeline.py
