@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import requests
 
 from dags.utils.alerting import notify_failure
+from dags.utils.assets import FACT_ORDERS_LOADED
 
 CONN_ID = "insightiq_postgres"
 OLLAMA_URL = "http://host.docker.internal:11434/api/generate"
@@ -173,6 +174,12 @@ LLM-generated (Ollama) plain-English run summary. On success, the final
 task fire-and-forget triggers `insightiq_data_validation` as its own
 independent DagRun via `TriggerDagRunOperator`, chaining ETL to validation
 without duplicating validation's checks here.
+
+`transform_task` also declares `FACT_ORDERS_LOADED` (see
+`dags/utils/assets.py`) as an `outlet` — a second, differently-architected
+way this DAG notifies downstream work, contrasted with the
+`TriggerDagRunOperator` call above in `insightiq_assets_demo_dag.py`'s
+doc_md.
 """,
 ) as dag:
 
@@ -185,6 +192,14 @@ without duplicating validation's checks here.
         task_id="transform_task",
         python_callable=transform_task,
         execution_timeout=timedelta(minutes=15),
+        # Declares FACT_ORDERS_LOADED as an outlet: on every successful run
+        # of this task, Airflow marks the asset "updated", which is what
+        # wakes insightiq_post_load_asset_consumer (see
+        # insightiq_assets_demo_dag.py) — decoupled from
+        # trigger_data_validation below, which is an explicit,
+        # this-DAG-knows-about-that-DAG call. See that DAG's doc_md for the
+        # architectural contrast.
+        outlets=[FACT_ORDERS_LOADED],
     )
     validate = PythonOperator(task_id="validate_task", python_callable=validate_task)
     summary = PythonOperator(task_id="summary_task", python_callable=summary_task)
