@@ -2,7 +2,7 @@
 
 Local Apache Airflow 3.3.0 via Docker Compose (CeleryExecutor, Redis,
 Postgres-backed metadata db), running alongside InsightIQ's own Postgres
-warehouse and the n8n automation layer (see `n8n/README.md`). 9 DAGs, each
+warehouse and the n8n automation layer (see `n8n/README.md`). 10 DAGs, each
 demonstrating a distinct orchestration pattern rather than all doing the
 same kind of work.
 
@@ -224,6 +224,57 @@ returned a real Ollama-generated summary (its first run hit the same
 `insightiq_real_etl_dag.py`'s `summary_task` and `notify_failure` — the
 task still succeeds via the `try/except` fallback text, it just doesn't
 have a real summary that run).
+
+### 10. `insightiq_post_load_asset_consumer` — Asset-based scheduling
+
+Demonstrates Airflow 3.x's Asset feature (the rename of Airflow 2's
+Datasets) as a second, differently-architected way to chain DAGs, next to
+`insightiq_real_etl` → `insightiq_data_validation`'s `TriggerDagRunOperator`
+call above.
+
+`insightiq_real_etl`'s `transform_task` declares
+`FACT_ORDERS_LOADED` — a URI-based Asset identifier,
+`postgres://host.docker.internal:5544/insightiq/public/fact_orders`
+(`dags/utils/assets.py`, built via the postgres provider's
+`create_asset()` helper rather than a bare `Asset(uri=...)`, since its
+AIP-60 URI sanitizer requires a full `host:port/database/schema/table`
+path) — as an `outlet`. `insightiq_post_load_asset_consumer` schedules on
+that same asset (`schedule=[FACT_ORDERS_LOADED]`) instead of a cron
+expression or a manual trigger: a new DagRun is created automatically
+every time the asset is updated, i.e. every time `transform_task`
+succeeds.
+
+**Architecturally different from `insightiq_real_etl` →
+`insightiq_data_validation`**, not just a stylistic alternative:
+
+- `TriggerDagRunOperator` is producer-initiated and point-to-point — the
+  ETL DAG's own code names `insightiq_data_validation`'s `dag_id`
+  literally. Adding another consumer means editing the producer to add
+  another `TriggerDagRunOperator`.
+- Asset scheduling is consumer-declared and decoupled — `transform_task`
+  only declares what it produces (`outlets=[FACT_ORDERS_LOADED]`) and has
+  no knowledge that `insightiq_post_load_asset_consumer` exists at all,
+  or that anything else is scheduled on the same asset. Adding another
+  consumer means writing a new DAG with that asset in its `schedule=[...]`;
+  `insightiq_real_etl` never changes.
+
+Both mechanisms are kept side by side deliberately: `TriggerDagRunOperator`
+is the right tool when a producer needs to know its consumer ran (e.g.
+`wait_for_completion=True`); Asset scheduling is the right tool when a
+producer just needs to publish "this data changed" and doesn't care who,
+if anyone, is listening.
+
+**Verified end-to-end against the running containers**, not just parsed:
+triggered `insightiq_real_etl` manually, and once `transform_task`
+succeeded, Airflow's own scheduler/task log for the resulting
+`insightiq_post_load_asset_consumer` run stated explicitly "Triggered by
+asset event(s)", including the full event trace — source task
+(`transform_task`), source DAG (`insightiq_real_etl`), source run id, and
+timestamp — confirming the decoupled trigger actually fired, not just
+that the DAG *could* be scheduled that way. `insightiq_post_load_asset_consumer`
+is paused by default (per the "every DAG is paused on first load" note
+above) since it's a demo DAG, not part of the production chain — unpause
+it to see this fire on a real `insightiq_real_etl` run.
 
 ## Airflow Connection setup
 
