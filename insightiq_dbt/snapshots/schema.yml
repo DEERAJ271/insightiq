@@ -1,0 +1,26 @@
+version: 2
+
+snapshots:
+  - name: customer_rfm_snapshot
+    description: >
+      SCD Type 2 history of customer_rfm_segments. Uses the check
+      strategy (check_cols: segment_label, monetary) since the source
+      table has no updated_at column — see the comment at the top of
+      snapshots/customer_rfm_snapshot.sql for why. dbt_valid_from/
+      dbt_valid_to bound each version of a customer's row; the current
+      version has dbt_valid_to = null.
+    columns:
+      - name: customer_key
+        description: Foreign key to dim_customer. Not unique on its own in this snapshot — unique per (customer_key, dbt_valid_from).
+        tests:
+          - not_null
+      - name: segment_label
+        description: RFM segment label assigned by label_segment() in the insightiq_rfm_segmentation DAG. Change-tracked by this snapshot's check strategy.
+      - name: monetary
+        description: Total spend used for the RFM monetary score. Change-tracked by this snapshot's check strategy.
+      - name: dbt_valid_from
+        description: Timestamp this row version became active.
+        tests:
+          - not_null
+      - name: dbt_valid_to
+        description: Timestamp this row version was superseded, or null if it's the current version.
