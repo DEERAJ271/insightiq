@@ -1,4 +1,4 @@
--- Mart model: SLA delivery performance (delivered after estimated date) per state
+-- Mart model: SLA delivery performance (delivered late) per state
 with orders as (
 
     select *
