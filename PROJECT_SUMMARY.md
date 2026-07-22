@@ -1,10 +1,10 @@
 # InsightIQ — Interview Cheat Sheet
 
 ## 1. Elevator pitch
-InsightIQ is an end-to-end analytics platform: a Python ETL pipeline loads Olist e-commerce data into a Postgres star schema, which feeds a Power BI dashboard and a RAG + NL2SQL chatbot for natural-language questions over the data. Apache Airflow (9 DAGs) and n8n orchestrate the pipeline, validation, and customer segmentation, with dbt handling in-warehouse transformation (staging model + marts) run and tested from its own Airflow DAG; everything was built and debugged with Claude Code, with the prompt log kept as evidence and GitHub Actions running CI on every push.
+InsightIQ is an end-to-end analytics platform: a Python ETL pipeline loads Olist e-commerce data into a Postgres star schema, which feeds a Power BI dashboard and a RAG + NL2SQL chatbot for natural-language questions over the data. Apache Airflow (10 DAGs) and n8n orchestrate the pipeline, validation, and customer segmentation, with dbt handling in-warehouse transformation (staging model + marts) run and tested from its own Airflow DAG; everything was built and debugged with Claude Code, with the prompt log kept as evidence and GitHub Actions running CI on every push.
 
 ## 2. Architecture (one paragraph)
-Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned, and loaded by a Python/pandas/SQLAlchemy ETL pipeline into a Postgres star schema (`fact_orders` + `dim_*`). Airflow DAGs own the recurring work on top of that warehouse — the real ETL run itself, parallel data-quality checks (hand-written SQL + a Great Expectations suite), a pandas category-summary rollup, dynamic task-mapped deep dives, weekly RFM customer segmentation, and an `insightiq_dbt_pipeline` DAG that runs and tests the `insightiq_dbt` project's staging model and marts — with one DAG chaining into another via `TriggerDagRunOperator` and LLM-generated (Ollama) failure alerts wired into every DAG that touches real data. n8n hosts an earlier, still-maintained visual-prototype version of the same ETL/validation/alerting/reporting ideas. On the consumption side, Power BI reads the warehouse directly for dashboards, and a Streamlit app routes natural-language questions through a chatbot that picks between NL2SQL (Postgres) and RAG (Chroma + LangChain) depending on the question, backed by either Claude or local Ollama depending on `LLM_BACKEND`.
+Raw CSVs (orders, customers, products, reviews, payments) are extracted, cleaned, and loaded by a Python/pandas/SQLAlchemy ETL pipeline into a Postgres star schema (`fact_orders` + `dim_*`). Airflow DAGs own the recurring work on top of that warehouse — the real ETL run itself, parallel data-quality checks (hand-written SQL + a Great Expectations suite), a pandas category-summary rollup, dynamic task-mapped deep dives, weekly RFM customer segmentation, an `insightiq_dbt_pipeline` DAG that runs and tests the `insightiq_dbt` project's staging model and marts, and an `insightiq_post_load_asset_consumer` DAG scheduled on a `fact_orders`-updated Asset rather than a cron/manual trigger — with one DAG chaining into another via `TriggerDagRunOperator` (explicit, point-to-point) or Asset scheduling (decoupled, consumer-declared), and LLM-generated (Ollama) failure alerts wired into every DAG that touches real data. n8n hosts an earlier, still-maintained visual-prototype version of the same ETL/validation/alerting/reporting ideas. On the consumption side, Power BI reads the warehouse directly for dashboards, and a Streamlit app routes natural-language questions through a chatbot that picks between NL2SQL (Postgres) and RAG (Chroma + LangChain) depending on the question, backed by either Claude or local Ollama depending on `LLM_BACKEND`.
 
 ## 3. Five best "bug you fixed" stories
 
@@ -20,7 +20,7 @@ Python, pandas, SQLAlchemy, PostgreSQL, dbt, Apache Airflow, n8n, Power BI/DAX, 
 ## 5. Numbers that matter
 - **fact_orders**: 102,425 rows · **dim_customer**: 99,441 · **dim_product**: 32,951 · **dim_seller**: 3,095 · **dim_date**: 799
 - **customer_rfm_segments**: 98,666 rows · **category_summary**: 73 rows
-- **Airflow DAGs**: 9
+- **Airflow DAGs**: 10
 - **Tests**: 14 passing (12 Airflow/`pytest tests/` in `airflow/`, 2 in root `tests/`)
 - **Custom Claude Code commands/skills**: 16 (`.claude/commands/`)
 - **Dev log entries**: 39 (`dev-logs/prompts.md`)

@@ -86,14 +86,17 @@ measures.
 
 ## Orchestration
 
-- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 9 DAGs
+- **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 10 DAGs
   covering the real ETL pipeline (with DAG-to-DAG triggering into a
   validation DAG), parallel data-quality checks, dynamic task mapping,
   a sensor/reschedule-mode demo, a Great Expectations expectation
-  suite, RFM customer segmentation, and an `insightiq_dbt_pipeline` DAG
+  suite, RFM customer segmentation, an `insightiq_dbt_pipeline` DAG
   that runs and tests the `insightiq_dbt` project's staging model and
-  marts inside the Airflow containers. See `airflow/README.md` for
-  setup, the Postgres connection config, and container-networking notes.
+  marts inside the Airflow containers, and an Asset-scheduled DAG
+  (`insightiq_post_load_asset_consumer`) that runs automatically
+  whenever `fact_orders` is reloaded, decoupled from the producer DAG.
+  See `airflow/README.md` for setup, the Postgres connection config,
+  and container-networking notes.
 - **`n8n/`** — n8n workflows for fast, visual prototyping of the same
   ETL-orchestration, data-validation, RFM-alerting, and category-revenue
   reporting ideas, built first and kept alongside Airflow rather than
