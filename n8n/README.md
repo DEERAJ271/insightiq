@@ -23,7 +23,7 @@ n8n start
 ```
 
 UI: `http://localhost:5678` (n8n's default port). Then see "Import"
-below to load the four workflows and point their Postgres credential at
+below to load the six workflows and point their Postgres credential at
 your local instance.
 
 ## Workflow 1: insightiq-data-validation (Published)
@@ -205,6 +205,19 @@ filtered out). Confirms the n8n engine executing and chaining all 4
 nodes for real; does not confirm the GUI's own "Execute workflow" button
 specifically, since that path still needs the real sign-in this machine
 has configured.
+
+`n8n/workflows/insightiq-system-health.json` didn't exist until a
+2026-07-22 portfolio-readiness check caught it: this workflow had been
+"Published" (per above) and documented since 2026-07-17, but — unlike
+Workflows 1-5 — never actually exported to a file, so `n8n/workflows/`
+had 5 committed `.json` files against 6 documented workflows. Exported
+via `n8n export:workflow --id=QCEtfpygByehyK1C`, then reshaped by hand
+to match the other 5 files' plain `{nodes, connections, pinData, meta}`
+shape — the raw CLI export additionally included this local install's
+DB metadata (`shared`, `sourceWorkflowId`, `versionId`, etc.), and
+`shared` specifically contained this machine's real name and email
+address via its personal project record. Stripped before committing;
+none of that metadata is needed to re-import the workflow elsewhere.
 
 ## Setup notes
 

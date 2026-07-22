@@ -1,0 +1,121 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "87c82855-ea89-4bb5-9c3b-457c78afb46e",
+      "name": "When clicking \u2018Execute workflow\u2019"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as order_count, MAX(order_date_key) as last_update\nFROM fact_orders f\nJOIN dim_date d ON f.order_date_key = d.date_key;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "acf13bc9-4164-4e22-9084-219a07c5a011",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "OQ3KW2ThSmYifMTz",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8080/auth/token",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"username\": \"airflow\",\n  \"password\": \"airflow\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "8e2ccc48-df1d-4455-8765-32c9aa8ea16f",
+      "name": "Get Airflow Token"
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:8080/api/v2/dags/insightiq_real_etl/dagRuns?limit=5&order_by=-start_date",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get Airflow Token').item.json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "263b69dc-20f4-4e76-a597-225d885dc342",
+      "name": "Get DAG Runs"
+    }
+  ],
+  "connections": {
+    "When clicking \u2018Execute workflow\u2019": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Get Airflow Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Airflow Token": {
+      "main": [
+        [
+          {
+            "node": "Get DAG Runs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DAG Runs": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "2d662c9af7941d2bd3e3f17a5f0c492439365f74bad8a77f9c69b61422506df9"
+  }
+}
