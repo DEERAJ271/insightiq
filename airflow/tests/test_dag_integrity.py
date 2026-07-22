@@ -7,7 +7,7 @@ main project); they test that Airflow can actually parse and load every
 DAG file without blowing up, which is a surprisingly common CI check in
 real Airflow projects.
 """
-import os
+
 import pytest
 from airflow.models import DagBag
 from dags.utils.alerting import notify_failure
@@ -19,9 +19,9 @@ def dagbag():
 
 
 def test_no_import_errors(dagbag):
-    assert len(dagbag.import_errors) == 0, (
-        f"DAG import failures found: {dagbag.import_errors}"
-    )
+    assert (
+        len(dagbag.import_errors) == 0
+    ), f"DAG import failures found: {dagbag.import_errors}"
 
 
 def test_expected_dags_present(dagbag):
@@ -45,9 +45,9 @@ def test_dags_have_tags(dagbag):
 
 def test_dags_have_owner_or_default_args(dagbag):
     for dag_id, dag in dagbag.dags.items():
-        assert dag.default_args is not None or dag.owner, (
-            f"DAG {dag_id} has neither default_args nor an explicit owner"
-        )
+        assert (
+            dag.default_args is not None or dag.owner
+        ), f"DAG {dag_id} has neither default_args nor an explicit owner"
 
 
 def test_no_cycles(dagbag):
@@ -89,9 +89,9 @@ def test_validation_dag_has_expected_tasks(dagbag):
 
 
 def test_ge_validation_dag_present_and_loads(dagbag):
-    assert "insightiq_ge_validation" in dagbag.dags, (
-        "insightiq_ge_validation DAG not found"
-    )
+    assert (
+        "insightiq_ge_validation" in dagbag.dags
+    ), "insightiq_ge_validation DAG not found"
     assert "insightiq_ge_validation" not in dagbag.import_errors, (
         f"insightiq_ge_validation failed to import: "
         f"{dagbag.import_errors.get('insightiq_ge_validation')}"
@@ -99,9 +99,9 @@ def test_ge_validation_dag_present_and_loads(dagbag):
 
 
 def test_rfm_segmentation_dag_present_and_loads(dagbag):
-    assert "insightiq_rfm_segmentation" in dagbag.dags, (
-        "insightiq_rfm_segmentation DAG not found"
-    )
+    assert (
+        "insightiq_rfm_segmentation" in dagbag.dags
+    ), "insightiq_rfm_segmentation DAG not found"
     assert "insightiq_rfm_segmentation" not in dagbag.import_errors, (
         f"insightiq_rfm_segmentation failed to import: "
         f"{dagbag.import_errors.get('insightiq_rfm_segmentation')}"

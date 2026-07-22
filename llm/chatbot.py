@@ -7,6 +7,7 @@ TODO (good Claude Code task): replace the naive keyword router with a
 Claude-based classifier call, and support questions that need BOTH paths
 (e.g. "what's our repeat customer rate, and what counts as repeat?").
 """
+
 import logging
 import os
 import re
@@ -14,7 +15,11 @@ import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from llm.nl2sql import answer_numeric_question, SQLExecutionError, sql_generation_failure_message
+from llm.nl2sql import (
+    answer_numeric_question,
+    SQLExecutionError,
+    sql_generation_failure_message,
+)
 from rag.query_engine import retrieve_context
 
 logger = logging.getLogger(__name__)
@@ -51,7 +56,9 @@ def answer(question: str) -> str:
             _, df = answer_numeric_question(question)
         except SQLExecutionError as e:
             return str(e)
-        data_summary = df.to_markdown(index=False) if not df.empty else "No rows returned."
+        data_summary = (
+            df.to_markdown(index=False) if not df.empty else "No rows returned."
+        )
         context = f"Query result:\n{data_summary}"
     else:
         context = retrieve_context(question)
@@ -82,7 +89,9 @@ def answer(question: str) -> str:
         logger.error(
             "Compose step returned raw SQL instead of a natural-language "
             "answer.\nQuestion: %s\nBackend: %s\nResponse: %s",
-            question, LLM_BACKEND, result,
+            question,
+            LLM_BACKEND,
+            result,
         )
         return sql_generation_failure_message()
 

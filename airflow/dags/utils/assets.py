@@ -5,6 +5,7 @@ the exact same object rather than two separately-constructed Assets that
 happen to share a URI (Airflow identifies assets by URI either way, but
 importing one shared object avoids two sources of truth drifting apart).
 """
+
 from airflow.providers.postgres.assets.postgres import create_asset
 
 # create_asset() (not the bare Asset(uri=...) constructor) because the

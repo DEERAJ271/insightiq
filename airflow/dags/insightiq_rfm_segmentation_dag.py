@@ -14,6 +14,7 @@ heavily right-skewed (~90% of customers bought exactly one item), which
 is itself worth reading score_frequency()'s docstring for before
 assuming a plain pd.qcut quintile would work here.
 """
+
 import pandas as pd
 from sqlalchemy import text
 
@@ -143,27 +144,34 @@ def build_rfm_segments(**context):
     hook = PostgresHook(postgres_conn_id=CONN_ID)
     engine = hook.get_sqlalchemy_engine()
 
-    df = pd.read_sql("""
+    df = pd.read_sql(
+        """
         SELECT f.customer_key, f.order_id, f.item_count, f.price,
                d.full_date AS order_date
         FROM fact_orders f
         JOIN dim_date d ON f.order_date_key = d.date_key
         WHERE f.customer_key IS NOT NULL;
-    """, engine)
+    """,
+        engine,
+    )
     df["order_date"] = pd.to_datetime(df["order_date"])
 
     # Historical data, so "recency" is relative to the most recent order
     # in the dataset, not to today's date.
     max_order_date = df["order_date"].max()
 
-    rfm = df.groupby("customer_key").agg(
-        last_order_date=("order_date", "max"),
-        # Distinct order count has zero variance in this dataset (every
-        # customer has exactly one order) — total items purchased is
-        # used as the frequency signal instead, since it actually varies.
-        frequency=("item_count", "sum"),
-        monetary=("price", "sum"),
-    ).reset_index()
+    rfm = (
+        df.groupby("customer_key")
+        .agg(
+            last_order_date=("order_date", "max"),
+            # Distinct order count has zero variance in this dataset (every
+            # customer has exactly one order) — total items purchased is
+            # used as the frequency signal instead, since it actually varies.
+            frequency=("item_count", "sum"),
+            monetary=("price", "sum"),
+        )
+        .reset_index()
+    )
     rfm["recency_days"] = (max_order_date - rfm["last_order_date"]).dt.days
 
     rfm["r_score"] = score_quintile(rfm["recency_days"], higher_is_better=False)
@@ -171,16 +179,28 @@ def build_rfm_segments(**context):
     rfm["m_score"] = score_quintile(rfm["monetary"], higher_is_better=True)
 
     rfm["rfm_segment"] = (
-        rfm["r_score"].astype(str) + rfm["f_score"].astype(str) + rfm["m_score"].astype(str)
+        rfm["r_score"].astype(str)
+        + rfm["f_score"].astype(str)
+        + rfm["m_score"].astype(str)
     )
     rfm["segment_label"] = rfm.apply(
-        lambda row: label_segment(row["r_score"], row["f_score"], row["m_score"]), axis=1
+        lambda row: label_segment(row["r_score"], row["f_score"], row["m_score"]),
+        axis=1,
     )
 
-    result = rfm[[
-        "customer_key", "recency_days", "frequency", "monetary",
-        "r_score", "f_score", "m_score", "rfm_segment", "segment_label",
-    ]].copy()
+    result = rfm[
+        [
+            "customer_key",
+            "recency_days",
+            "frequency",
+            "monetary",
+            "r_score",
+            "f_score",
+            "m_score",
+            "rfm_segment",
+            "segment_label",
+        ]
+    ].copy()
     result["monetary"] = result["monetary"].round(2)
 
     # TRUNCATE + append instead of to_sql(if_exists="replace"): "replace"
@@ -188,9 +208,12 @@ def build_rfm_segments(**context):
     # view) depends on this table. TRUNCATE clears the rows without
     # dropping the table, so the dependent view stays valid.
     with engine.begin() as conn:
-        table_exists = conn.execute(
-            text("SELECT to_regclass('public.customer_rfm_segments')")
-        ).scalar() is not None
+        table_exists = (
+            conn.execute(
+                text("SELECT to_regclass('public.customer_rfm_segments')")
+            ).scalar()
+            is not None
+        )
         if table_exists:
             conn.execute(text("TRUNCATE TABLE customer_rfm_segments"))
     result.to_sql("customer_rfm_segments", engine, if_exists="append", index=False)

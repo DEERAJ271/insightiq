@@ -36,7 +36,8 @@ runtime from the query result.
 
     def analyze_category(category: str):
         hook = PostgresHook(postgres_conn_id=CONN_ID)
-        result = hook.get_first("""
+        result = hook.get_first(
+            """
             SELECT
                 COUNT(*) as orders,
                 ROUND(AVG(f.price)::numeric, 2) as avg_price,
@@ -44,9 +45,17 @@ runtime from the query result.
             FROM fact_orders f
             JOIN dim_product p ON f.product_key = p.product_key
             WHERE p.category = %s;
-        """, parameters=(category,))
-        print(f"{category}: orders={result[0]}, avg_price={result[1]}, stddev={result[2]}")
-        return {"category": category, "orders": result[0], "avg_price": float(result[1])}
+        """,
+            parameters=(category,),
+        )
+        print(
+            f"{category}: orders={result[0]}, avg_price={result[1]}, stddev={result[2]}"
+        )
+        return {
+            "category": category,
+            "orders": result[0],
+            "avg_price": float(result[1]),
+        }
 
     get_categories = PythonOperator(
         task_id="get_top_categories",

@@ -15,6 +15,7 @@ for host: host.docker.internal. /opt/insightiq is already bind-mounted
 into the containers (see airflow/docker-compose.yaml), so insightiq_dbt/
 is visible there without any new volume mount.
 """
+
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator

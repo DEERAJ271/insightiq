@@ -8,6 +8,7 @@ great_expectations 1.18.2 pinned in requirements.txt, to the old
 `PandasDataset`/`ge.from_pandas()` shortcut, which was removed from the
 library well before this version.
 """
+
 import pandas as pd
 import great_expectations as gx
 import great_expectations.expectations as gxe
@@ -33,12 +34,20 @@ def run_ge_expectations(**context):
     gx_context = gx.get_context(mode="ephemeral")
     data_source = gx_context.data_sources.add_pandas(name="insightiq_postgres_pandas")
     data_asset = data_source.add_dataframe_asset(name="fact_orders_asset")
-    batch_definition = data_asset.add_batch_definition_whole_dataframe("fact_orders_batch")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe(
+        "fact_orders_batch"
+    )
     batch = batch_definition.get_batch(batch_parameters={"dataframe": df})
 
     expectations = [
-        ("customer_key not null", gxe.ExpectColumnValuesToNotBeNull(column="customer_key")),
-        ("product_key not null", gxe.ExpectColumnValuesToNotBeNull(column="product_key")),
+        (
+            "customer_key not null",
+            gxe.ExpectColumnValuesToNotBeNull(column="customer_key"),
+        ),
+        (
+            "product_key not null",
+            gxe.ExpectColumnValuesToNotBeNull(column="product_key"),
+        ),
         # mostly=0.95: some legitimate nulls exist in review_score (unreviewed
         # orders); nulls are excluded from this check entirely, mostly just
         # tolerates a small fraction of bad non-null values as noise rather
@@ -51,11 +60,15 @@ def run_ge_expectations(**context):
         ),
         (
             "price >= 0",
-            gxe.ExpectColumnValuesToBeBetween(column="price", min_value=0, max_value=None),
+            gxe.ExpectColumnValuesToBeBetween(
+                column="price", min_value=0, max_value=None
+            ),
         ),
         (
             "item_count >= 1",
-            gxe.ExpectColumnValuesToBeBetween(column="item_count", min_value=1, max_value=None),
+            gxe.ExpectColumnValuesToBeBetween(
+                column="item_count", min_value=1, max_value=None
+            ),
         ),
     ]
 

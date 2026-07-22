@@ -8,8 +8,10 @@ row counts (for an early sanity signal); transform_task re-extracts (cheap,
 since the source is local CSVs) and performs transform+load in one task,
 since the cleaned DataFrames it builds never need to leave that task.
 """
+
 import os
 import sys
+
 sys.path.insert(0, "/opt/insightiq")
 
 from airflow import DAG
@@ -56,8 +58,12 @@ def transform_task(**context):
     import pandas as pd
     from etl.extract import extract_all
     from etl.transform import (
-        clean_orders, clean_products, clean_customers, clean_sellers,
-        build_dim_date, build_fact_orders,
+        clean_orders,
+        clean_products,
+        clean_customers,
+        clean_sellers,
+        build_dim_date,
+        build_fact_orders,
     )
     from etl.load import load_table, get_engine
     from etl.run_pipeline import _assign_key, _truncate_all
@@ -72,14 +78,21 @@ def transform_task(**context):
     dim_product = _assign_key(
         clean_products(raw["products"], raw["category_translation"]), "product_key"
     )
-    all_dates = pd.concat([
-        orders["order_purchase_timestamp"],
-        orders["order_delivered_customer_date"],
-        orders["order_estimated_delivery_date"],
-    ])
+    all_dates = pd.concat(
+        [
+            orders["order_purchase_timestamp"],
+            orders["order_delivered_customer_date"],
+            orders["order_estimated_delivery_date"],
+        ]
+    )
     dim_date = build_dim_date(all_dates.min(), all_dates.max())
     fact = build_fact_orders(
-        orders, raw["order_items"], dim_customer, dim_product, dim_seller, raw["reviews"]
+        orders,
+        raw["order_items"],
+        dim_customer,
+        dim_product,
+        dim_seller,
+        raw["reviews"],
     )
 
     print("Loading...")
@@ -112,15 +125,19 @@ def validate_task(**context):
             raise ValueError(f"{table} has 0 rows after load")
 
     for col, dim_table in FK_CHECKS:
-        result = hook.get_first(f"""
+        result = hook.get_first(
+            f"""
             SELECT COUNT(*) FROM fact_orders f
             LEFT JOIN {dim_table} d ON f.{col} = d.{col}
             WHERE f.{col} IS NOT NULL AND d.{col} IS NULL;
-        """)
+        """
+        )
         count = result[0]
         print(f"Orphaned {col} -> {dim_table}: {count}")
         if count > 0:
-            raise ValueError(f"Found {count} orphaned {col} reference(s) to {dim_table}")
+            raise ValueError(
+                f"Found {count} orphaned {col} reference(s) to {dim_table}"
+            )
 
 
 def summary_task(**context):

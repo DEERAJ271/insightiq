@@ -29,6 +29,7 @@ Reads connection details from these env vars (see .env.example):
     SNOWFLAKE_SCHEMA     (required)
     SNOWFLAKE_ROLE       (optional)
 """
+
 import os
 import pandas as pd
 from sqlalchemy import create_engine
@@ -38,8 +39,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _REQUIRED_ENV_VARS = [
-    "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD",
-    "SNOWFLAKE_WAREHOUSE", "SNOWFLAKE_DATABASE", "SNOWFLAKE_SCHEMA",
+    "SNOWFLAKE_ACCOUNT",
+    "SNOWFLAKE_USER",
+    "SNOWFLAKE_PASSWORD",
+    "SNOWFLAKE_WAREHOUSE",
+    "SNOWFLAKE_DATABASE",
+    "SNOWFLAKE_SCHEMA",
 ]
 
 
@@ -60,15 +65,17 @@ def get_engine():
     string — it applies the escaping/encoding rules the Snowflake dialect
     expects for account, user, and password.
     """
-    return create_engine(URL(
-        account=_require_env("SNOWFLAKE_ACCOUNT"),
-        user=_require_env("SNOWFLAKE_USER"),
-        password=_require_env("SNOWFLAKE_PASSWORD"),
-        warehouse=_require_env("SNOWFLAKE_WAREHOUSE"),
-        database=_require_env("SNOWFLAKE_DATABASE"),
-        schema=_require_env("SNOWFLAKE_SCHEMA"),
-        role=os.getenv("SNOWFLAKE_ROLE"),
-    ))
+    return create_engine(
+        URL(
+            account=_require_env("SNOWFLAKE_ACCOUNT"),
+            user=_require_env("SNOWFLAKE_USER"),
+            password=_require_env("SNOWFLAKE_PASSWORD"),
+            warehouse=_require_env("SNOWFLAKE_WAREHOUSE"),
+            database=_require_env("SNOWFLAKE_DATABASE"),
+            schema=_require_env("SNOWFLAKE_SCHEMA"),
+            role=os.getenv("SNOWFLAKE_ROLE"),
+        )
+    )
 
 
 def load_table(df: pd.DataFrame, table_name: str, if_exists: str = "append") -> None:

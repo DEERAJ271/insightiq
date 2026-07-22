@@ -10,6 +10,7 @@ the NL2SQL path used for numeric questions.
 TODO (good Claude Code task): auto-generate schema docs by introspecting
 Postgres (information_schema) instead of hand-writing SCHEMA_DOCS below.
 """
+
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -21,7 +22,9 @@ from langchain.docstore.document import Document
 load_dotenv()
 
 PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./rag/chroma_store")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/insightiq")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/insightiq"
+)
 
 
 def get_engine():
@@ -31,7 +34,9 @@ def get_engine():
 def load_glossary_docs() -> list[Document]:
     engine = get_engine()
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT term, definition FROM business_glossary")).fetchall()
+        rows = conn.execute(
+            text("SELECT term, definition FROM business_glossary")
+        ).fetchall()
     return [
         Document(
             page_content=f"{row.term}: {row.definition}",
@@ -39,6 +44,7 @@ def load_glossary_docs() -> list[Document]:
         )
         for row in rows
     ]
+
 
 # Placeholder schema documentation — expand this as the warehouse evolves.
 SCHEMA_DOCS = """
@@ -67,7 +73,9 @@ business fact.
 def build_index():
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(SCHEMA_DOCS)
-    docs = [Document(page_content=c, metadata={"source": "schema_docs"}) for c in chunks]
+    docs = [
+        Document(page_content=c, metadata={"source": "schema_docs"}) for c in chunks
+    ]
 
     glossary_docs = load_glossary_docs()
     docs.extend(glossary_docs)
@@ -75,7 +83,9 @@ def build_index():
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vectordb = Chroma.from_documents(docs, embeddings, persist_directory=PERSIST_DIR)
     vectordb.persist()
-    print(f"Indexed {len(docs)} chunks into {PERSIST_DIR} ({len(glossary_docs)} from glossary)")
+    print(
+        f"Indexed {len(docs)} chunks into {PERSIST_DIR} ({len(glossary_docs)} from glossary)"
+    )
 
 
 if __name__ == "__main__":

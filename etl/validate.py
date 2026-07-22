@@ -12,6 +12,7 @@ Checks:
 
 Run with: python -m etl.validate
 """
+
 import pandas as pd
 from sqlalchemy import text
 from etl.load import get_engine
@@ -20,8 +21,8 @@ SAMPLE_SIZE = 5
 
 FK_CHECKS = [
     ("customer_key", "dim_customer"),
-    ("product_key",  "dim_product"),
-    ("seller_key",   "dim_seller"),
+    ("product_key", "dim_product"),
+    ("seller_key", "dim_seller"),
 ]
 
 
@@ -87,7 +88,9 @@ def check_fact_duplicates(engine) -> bool:
     """
     count = int(_read(engine, f"SELECT COUNT(*) AS n FROM ({sql}) sub").iloc[0]["n"])
     if count:
-        print(f"  [FAIL] Duplicate (order_id, product_key) in fact_orders: {count:,} group(s)")
+        print(
+            f"  [FAIL] Duplicate (order_id, product_key) in fact_orders: {count:,} group(s)"
+        )
         sample = _read(engine, f"{sql} ORDER BY n DESC LIMIT {SAMPLE_SIZE}")
         print(sample.to_string(index=False))
         return False
@@ -97,7 +100,7 @@ def check_fact_duplicates(engine) -> bool:
 
 DIM_NATURAL_KEYS = [
     ("dim_customer", "customer_id"),
-    ("dim_product",  "product_id"),
+    ("dim_product", "product_id"),
 ]
 
 
@@ -111,7 +114,9 @@ def check_dim_duplicates(engine) -> bool:
             GROUP BY {key_col}
             HAVING COUNT(*) > 1
         """
-        count = int(_read(engine, f"SELECT COUNT(*) AS n FROM ({sql}) sub").iloc[0]["n"])
+        count = int(
+            _read(engine, f"SELECT COUNT(*) AS n FROM ({sql}) sub").iloc[0]["n"]
+        )
         if count:
             print(f"  [FAIL] Duplicate {key_col} in {table}: {count:,} value(s)")
             sample = _read(engine, f"{sql} ORDER BY n DESC LIMIT {SAMPLE_SIZE}")
@@ -138,7 +143,9 @@ def check_freight_outliers(engine) -> bool:
     count_sql = f"SELECT COUNT(*) AS n FROM ({sql}) sub"
     count = int(_read(engine, count_sql).iloc[0]["n"])
     if count:
-        print(f"  [WARN] freight_value > price * 3: {count:,} row(s) (flagged, not failed)")
+        print(
+            f"  [WARN] freight_value > price * 3: {count:,} row(s) (flagged, not failed)"
+        )
         sample = _read(engine, f"{sql} ORDER BY freight_ratio DESC LIMIT {SAMPLE_SIZE}")
         print(sample.to_string(index=False))
     else:
@@ -200,11 +207,18 @@ def main():
 
     print("\n=== Business-rule checks ===")
     check_freight_outliers(engine)
-    review_ok    = check_review_score(engine)
-    delivery_ok  = check_delivery_before_order(engine)
+    review_ok = check_review_score(engine)
+    delivery_ok = check_delivery_before_order(engine)
 
     print()
-    if nulls_ok and orphans_ok and fact_dupes_ok and dim_dupes_ok and review_ok and delivery_ok:
+    if (
+        nulls_ok
+        and orphans_ok
+        and fact_dupes_ok
+        and dim_dupes_ok
+        and review_ok
+        and delivery_ok
+    ):
         print("All checks passed.")
     else:
         print("Validation FAILED — see details above.")

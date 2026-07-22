@@ -43,14 +43,16 @@ cadence without touching the ETL pipeline.
 
     def check_duplicate_orders(**context):
         hook = PostgresHook(postgres_conn_id=CONN_ID)
-        result = hook.get_first("""
+        result = hook.get_first(
+            """
             SELECT COUNT(*) FROM (
                 SELECT order_id, product_key, COUNT(*) as c
                 FROM fact_orders
                 GROUP BY order_id, product_key
                 HAVING COUNT(*) > 1
             ) dupes;
-        """)
+        """
+        )
         count = result[0]
         print(f"Duplicate order-product rows: {count}")
         context["ti"].xcom_push(key="duplicate_count", value=count)
@@ -59,11 +61,13 @@ cadence without touching the ETL pipeline.
 
     def check_review_score_range(**context):
         hook = PostgresHook(postgres_conn_id=CONN_ID)
-        result = hook.get_first("""
+        result = hook.get_first(
+            """
             SELECT COUNT(*) FROM fact_orders
             WHERE review_score IS NOT NULL
             AND (review_score < 1 OR review_score > 5);
-        """)
+        """
+        )
         count = result[0]
         print(f"Out-of-range review scores: {count}")
         if count > 0:
@@ -71,10 +75,12 @@ cadence without touching the ETL pipeline.
 
     def check_freight_outliers(**context):
         hook = PostgresHook(postgres_conn_id=CONN_ID)
-        result = hook.get_first("""
+        result = hook.get_first(
+            """
             SELECT COUNT(*) FROM fact_orders
             WHERE freight_value > price * 3;
-        """)
+        """
+        )
         count = result[0]
         print(f"Freight value outliers (>3x price): {count}")
         context["ti"].xcom_push(key="freight_outlier_count", value=count)

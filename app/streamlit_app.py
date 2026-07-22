@@ -4,8 +4,10 @@ LLM chat panel.
 
 Run with: streamlit run app/streamlit_app.py
 """
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
@@ -19,7 +21,7 @@ tab_dashboard, tab_chat = st.tabs(["Dashboard", "Ask a question"])
 with tab_dashboard:
     st.markdown(
         "Embed the published Power BI report here, e.g. via `st.components.v1.iframe` "
-        "with your Power BI \"Publish to web\" embed URL, or link out to the report."
+        'with your Power BI "Publish to web" embed URL, or link out to the report.'
     )
     # st.components.v1.iframe("<power-bi-embed-url>", height=600)
 

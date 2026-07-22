@@ -46,7 +46,9 @@ tool when a producer needs to know its consumer ran (e.g.
 is the right tool when a producer just needs to publish "this data
 changed" and doesn't care who's listening.
 """
+
 import sys
+
 sys.path.insert(0, "/opt/insightiq")
 
 from airflow import DAG

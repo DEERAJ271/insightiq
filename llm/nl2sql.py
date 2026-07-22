@@ -6,6 +6,7 @@ TODO (good Claude Code task): add a retry loop that feeds the execution
 error back to the model if the generated SQL fails to run (run_query()
 already rejects non-SELECT statements before execution).
 """
+
 import logging
 import os
 import pandas as pd
@@ -128,7 +129,6 @@ JOIN dim_product p ON f.product_key = p.product_key
 GROUP BY p.category
 ORDER BY avg_order_value DESC
 """.strip(),
-
         "SLA breach rate by state (Q3)": """
 SELECT c.state,
        ROUND(100.0 * SUM(CASE WHEN f.delivered_date_key > f.estimated_date_key THEN 1 ELSE 0 END)
@@ -138,7 +138,6 @@ JOIN dim_customer c ON f.customer_key = c.customer_key
 GROUP BY c.state
 ORDER BY sla_breach_pct DESC
 """.strip(),
-
         "Repeat customer rate (Q4)": """
 SELECT
     COUNT(*) FILTER (WHERE order_count > 1) AS repeat_customers,

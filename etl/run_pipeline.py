@@ -3,6 +3,7 @@ Orchestrates extract -> transform -> load.
 
 Run with: python etl/run_pipeline.py [--mode full|incremental] [--target postgres|snowflake|both]
 """
+
 import argparse
 import os
 import sys
@@ -10,8 +11,12 @@ import pandas as pd
 from sqlalchemy import text
 from etl.extract import extract_all
 from etl.transform import (
-    clean_orders, clean_products, clean_customers, clean_sellers,
-    build_dim_date, build_fact_orders,
+    clean_orders,
+    clean_products,
+    clean_customers,
+    clean_sellers,
+    build_dim_date,
+    build_fact_orders,
 )
 from etl.load import load_table, get_engine
 
@@ -29,6 +34,7 @@ def _load_to_targets(df, table_name, if_exists, target):
         load_table(df, table_name, if_exists=if_exists)
     if target in ("snowflake", "both"):
         from etl.load_snowflake import load_table as load_table_snowflake
+
         load_table_snowflake(df, table_name, if_exists=if_exists)
 
 
@@ -42,16 +48,20 @@ def _assign_key(df, key_col):
 def _truncate_all(engine):
     # Fact table first to satisfy FK constraints, then dims.
     with engine.connect() as conn:
-        conn.execute(text(
-            "TRUNCATE fact_orders, dim_customer, dim_seller, dim_product, dim_date"
-            " RESTART IDENTITY CASCADE"
-        ))
+        conn.execute(
+            text(
+                "TRUNCATE fact_orders, dim_customer, dim_seller, dim_product, dim_date"
+                " RESTART IDENTITY CASCADE"
+            )
+        )
         conn.execute(text("COMMIT"))
 
 
 def _max_order_date_key(engine) -> int | None:
     with engine.connect() as conn:
-        return conn.execute(text("SELECT MAX(order_date_key) FROM fact_orders")).scalar()
+        return conn.execute(
+            text("SELECT MAX(order_date_key) FROM fact_orders")
+        ).scalar()
 
 
 def _upsert_dim(engine, cleaned_df, id_col, key_col, table_name, target="postgres"):
@@ -119,23 +129,34 @@ def run_full(target="postgres"):
     orders = clean_orders(raw["orders"])
 
     dim_customer = _assign_key(clean_customers(raw["customers"]), "customer_key")
-    dim_seller   = _assign_key(clean_sellers(raw["sellers"]),     "seller_key")
-    dim_product  = _assign_key(clean_products(raw["products"], raw["category_translation"]), "product_key")
-    all_dates = pd.concat([
-        orders["order_purchase_timestamp"],
-        orders["order_delivered_customer_date"],
-        orders["order_estimated_delivery_date"],
-    ])
+    dim_seller = _assign_key(clean_sellers(raw["sellers"]), "seller_key")
+    dim_product = _assign_key(
+        clean_products(raw["products"], raw["category_translation"]), "product_key"
+    )
+    all_dates = pd.concat(
+        [
+            orders["order_purchase_timestamp"],
+            orders["order_delivered_customer_date"],
+            orders["order_estimated_delivery_date"],
+        ]
+    )
     dim_date = build_dim_date(all_dates.min(), all_dates.max())
 
-    fact = build_fact_orders(orders, raw["order_items"], dim_customer, dim_product, dim_seller, raw["reviews"])
+    fact = build_fact_orders(
+        orders,
+        raw["order_items"],
+        dim_customer,
+        dim_product,
+        dim_seller,
+        raw["reviews"],
+    )
 
     print("Loading...")
-    _load_to_targets(dim_date,     "dim_date",     "append", target)
+    _load_to_targets(dim_date, "dim_date", "append", target)
     _load_to_targets(dim_customer, "dim_customer", "append", target)
-    _load_to_targets(dim_seller,   "dim_seller",   "append", target)
-    _load_to_targets(dim_product,  "dim_product",  "append", target)
-    _load_to_targets(fact,         "fact_orders",  "append", target)
+    _load_to_targets(dim_seller, "dim_seller", "append", target)
+    _load_to_targets(dim_product, "dim_product", "append", target)
+    _load_to_targets(fact, "fact_orders", "append", target)
 
     print(f"Pipeline complete. Loaded {len(fact)} fact_orders row(s).")
     return len(fact)
@@ -186,35 +207,51 @@ def run_incremental(target="postgres"):
         )
 
     dim_customer_clean = clean_customers(raw["customers"])
-    dim_seller_clean   = clean_sellers(raw["sellers"])
-    dim_product_clean  = clean_products(raw["products"], raw["category_translation"])
+    dim_seller_clean = clean_sellers(raw["sellers"])
+    dim_product_clean = clean_products(raw["products"], raw["category_translation"])
 
     new_customer_ids = set(new_orders["customer_id"])
-    new_seller_ids    = set(order_items["seller_id"])
-    new_product_ids   = set(order_items["product_id"])
+    new_seller_ids = set(order_items["seller_id"])
+    new_product_ids = set(order_items["product_id"])
 
     print("Loading new dimension rows (if any)...")
     dim_customer = _upsert_dim(
-        engine, dim_customer_clean[dim_customer_clean["customer_id"].isin(new_customer_ids)],
-        "customer_id", "customer_key", "dim_customer", target,
+        engine,
+        dim_customer_clean[dim_customer_clean["customer_id"].isin(new_customer_ids)],
+        "customer_id",
+        "customer_key",
+        "dim_customer",
+        target,
     )
     dim_seller = _upsert_dim(
-        engine, dim_seller_clean[dim_seller_clean["seller_id"].isin(new_seller_ids)],
-        "seller_id", "seller_key", "dim_seller", target,
+        engine,
+        dim_seller_clean[dim_seller_clean["seller_id"].isin(new_seller_ids)],
+        "seller_id",
+        "seller_key",
+        "dim_seller",
+        target,
     )
     dim_product = _upsert_dim(
-        engine, dim_product_clean[dim_product_clean["product_id"].isin(new_product_ids)],
-        "product_id", "product_key", "dim_product", target,
+        engine,
+        dim_product_clean[dim_product_clean["product_id"].isin(new_product_ids)],
+        "product_id",
+        "product_key",
+        "dim_product",
+        target,
     )
 
-    all_dates = pd.concat([
-        new_orders["order_purchase_timestamp"],
-        new_orders["order_delivered_customer_date"],
-        new_orders["order_estimated_delivery_date"],
-    ])
+    all_dates = pd.concat(
+        [
+            new_orders["order_purchase_timestamp"],
+            new_orders["order_delivered_customer_date"],
+            new_orders["order_estimated_delivery_date"],
+        ]
+    )
     _upsert_dim_date(engine, all_dates, target)
 
-    fact = build_fact_orders(new_orders, order_items, dim_customer, dim_product, dim_seller, raw["reviews"])
+    fact = build_fact_orders(
+        new_orders, order_items, dim_customer, dim_product, dim_seller, raw["reviews"]
+    )
 
     print("Loading new fact_orders rows...")
     _load_to_targets(fact, "fact_orders", "append", target)
@@ -244,15 +281,19 @@ def _require_snowflake_configured():
 def main():
     parser = argparse.ArgumentParser(description="Run the InsightIQ ETL pipeline.")
     parser.add_argument(
-        "--mode", choices=["full", "incremental"], default="full",
+        "--mode",
+        choices=["full", "incremental"],
+        default="full",
         help="full: truncate and reload every table (default). "
-             "incremental: high-water-mark load of only new orders.",
+        "incremental: high-water-mark load of only new orders.",
     )
     parser.add_argument(
-        "--target", choices=["postgres", "snowflake", "both"], default="postgres",
+        "--target",
+        choices=["postgres", "snowflake", "both"],
+        default="postgres",
         help="postgres: load into the Postgres warehouse only (default). "
-             "snowflake: load into Snowflake only (see etl/load_snowflake.py — "
-             "untested against a live account). both: load into both.",
+        "snowflake: load into Snowflake only (see etl/load_snowflake.py — "
+        "untested against a live account). both: load into both.",
     )
     args = parser.parse_args()
 

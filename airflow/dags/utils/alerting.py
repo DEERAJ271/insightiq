@@ -1,5 +1,6 @@
 import requests
 
+
 def notify_failure(context):
     task_id = context["task_instance"].task_id
     dag_id = context["dag"].dag_id
@@ -21,4 +22,6 @@ def notify_failure(context):
     except Exception as e:
         summary = f"(Alert summary generation failed: {e})"
 
-    print(f"=== FAILURE ALERT ===\nDAG: {dag_id}\nTask: {task_id}\n{summary}\n=====================")
+    print(
+        f"=== FAILURE ALERT ===\nDAG: {dag_id}\nTask: {task_id}\n{summary}\n====================="
+    )

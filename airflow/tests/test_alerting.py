@@ -8,6 +8,7 @@ and the fallback when Ollama is unreachable/slow) are each exercised
 directly, since a manual `airflow tasks test` run can only ever hit
 whichever path Ollama's current state happens to produce.
 """
+
 from unittest.mock import MagicMock, patch
 
 from dags.utils.alerting import notify_failure
@@ -25,7 +26,9 @@ def test_notify_failure_prints_llm_summary_on_success(capsys):
     mock_response = MagicMock()
     mock_response.json.return_value = {"response": "The table was missing."}
 
-    with patch("dags.utils.alerting.requests.post", return_value=mock_response) as mock_post:
+    with patch(
+        "dags.utils.alerting.requests.post", return_value=mock_response
+    ) as mock_post:
         notify_failure(_make_context(exception="relation does not exist"))
 
     args, kwargs = mock_post.call_args
@@ -41,7 +44,9 @@ def test_notify_failure_prints_llm_summary_on_success(capsys):
 
 
 def test_notify_failure_falls_back_when_ollama_unreachable(capsys):
-    with patch("dags.utils.alerting.requests.post", side_effect=ConnectionError("refused")):
+    with patch(
+        "dags.utils.alerting.requests.post", side_effect=ConnectionError("refused")
+    ):
         notify_failure(_make_context())
 
     out = capsys.readouterr().out

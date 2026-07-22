@@ -5,6 +5,7 @@ Idempotent re-runs are handled at the pipeline level, not here: run_pipeline.py'
 _truncate_all() truncates every table (RESTART IDENTITY CASCADE) before this
 module's load_table() appends the freshly transformed data back in.
 """
+
 import os
 import pandas as pd
 from sqlalchemy import create_engine
@@ -12,7 +13,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/insightiq")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/insightiq"
+)
 
 
 def get_engine():

@@ -19,7 +19,9 @@ from running until they time out. reschedule mode avoids that by only
 occupying a worker for the brief moment it takes to check the condition,
 which is why it's used here.
 """
+
 import sys
+
 sys.path.insert(0, "/opt/insightiq")
 
 from airflow import DAG

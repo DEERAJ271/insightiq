@@ -2,6 +2,7 @@
 Retrieval interface used by llm/chatbot.py for the definitional / contextual
 side of questions (e.g. "what counts as a repeat customer?").
 """
+
 import os
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
