@@ -1282,3 +1282,601 @@ thresholds came directly from grouping the real `Other` rows, not from
 a standard RFM reference — flagged in both the docstring and
 `airflow/README.md` as dataset-specific additions on top of the
 standard 11-segment scheme, not part of any canonical convention.
+
+---
+
+**Note on the entries below (2026-07-17 through 2026-07-21):**
+reconstructed from `git log`/diffs during the 2026-07-22
+portfolio-readiness session, not logged in real time — this file's own
+"last entry" gap (2026-07-15 → 2026-07-22, 41 commits with zero dev-log
+coverage) was exactly the problem that readiness check flagged as a
+`FAIL`. Prompts below are reconstructed to match what each commit's
+message and diff imply was actually asked, not verbatim transcripts —
+none exist for this period, since these sessions predate this
+conversation. Output/Edit content is drawn directly from the real
+diffs. Entries from 2026-07-22 onward are logged from the live session
+transcript, verbatim.
+
+---
+
+## 2026-07-17 — Cleanup pass: fix stale docs, TODOs, and a dataset-limitation caveat
+
+**Prompt:** (reconstructed) "Audit the repo for stale documentation —
+README/PROJECT_SUMMARY claims, `.claude/commands/*.md` instructions,
+and TODO comments in `etl/`, `llm/`, `rag/` — that no longer match the
+current code or data, and fix each one."
+
+**Output:** Found and fixed six independent staleness issues:
+- `PROJECT_SUMMARY.md`'s tech stack line listed `FastAPI` (never
+  imported anywhere) and omitted `HuggingFace embeddings` (used by
+  RAG, already in README's own Retrieval row).
+- `.claude/commands/query-performance.md` said "5 queries" and "112k+
+  rows" — `analytical_queries.sql` had grown to 6 queries, and
+  `fact_orders` has always been ~102k rows, not 112k+.
+- `.claude/commands/data-profile.md` claimed a "1.4%... already
+  explained" uncategorized-product figure with no corresponding
+  explanation anywhere in the repo; live data showed 1.85%
+  (610/32,951). Genericized to "~1-2%" so it can't drift out of sync
+  again.
+- `sql/analytical_queries.sql`'s repeat-customer-rate query always
+  returns 0% because `customer_id` in this warehouse is order-scoped,
+  not a persistent shopper ID — a quirk already documented in
+  dev-logs and `airflow/README.md`'s RFM DAG section, but invisible at
+  the query itself. Added an inline `NOTE`.
+- `etl/load.py`, `etl/extract.py`, `etl/transform.py`: three TODOs
+  described work that was already done (idempotency was already
+  handled by `run_pipeline.py`'s truncate step; `extract_all()`
+  already pointed at the real dataset; 3 of 4 listed transform TODOs
+  were already implemented) — trimmed each to just the genuinely open
+  item.
+- `rag/build_index.py`'s `SCHEMA_DOCS` "repeat customer" definition
+  (what actually gets embedded and retrieved for a "what counts as a
+  repeat customer?" RAG-routed question) got the same
+  order-scoped-customer-id caveat, so the chatbot's retrieved context
+  doesn't imply repeat customers are a live metric here.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-17 — n8n: add RFM alerts and category enrichment workflows
+
+**Prompt:** (reconstructed) "Add two more n8n workflows: one that runs
+daily, queries the top 10 At Risk/Lost RFM customers by spend, and
+gets Ollama to write a retention-focused summary; and one that queries
+per-category order/revenue, and gets Ollama to write a narrative about
+which categories have unusually high or low average order value."
+
+**Output:**
+- `insightiq-rfm-alerts`: Schedule Trigger (daily) → Postgres (top 10
+  At-Risk/Lost customers by spend) → IF (skip on empty result) → Code
+  node → Ollama retention summary. The Code node collapses all
+  Postgres rows into a single item before the HTTP Request node —
+  without it, n8n's HTTP node fires once per input item, so up to 10
+  redundant single-customer Ollama calls would fire instead of one
+  combined summary (same shape `insightiq-etl-orchestration` already
+  used for its own Code → HTTP Request handoff).
+- `insightiq-category-enrichment`: Manual Trigger → Postgres
+  (per-category orders/revenue) → Code node → Ollama narrative. The
+  Code node computes both revenue share and order share per category
+  in one pass over all 74 rows, so it's the *divergence* between the
+  two (not revenue share alone) that flags a category as having
+  unusually high/low average order value.
+- `n8n import:workflow` failed on this local install (v2.29.9) for
+  both, with unrelated CLI version-compat errors (a bogus
+  credential-ownership error, then `NOT NULL constraint failed:
+  workflow_entity.id`) — not an issue with either workflow file,
+  confirmed via `PRAGMA integrity_check` that existing workflows were
+  untouched. Verified each stage manually against real data instead:
+  Postgres queries against the live warehouse, the aggregation JS run
+  in Node against the real results, and the resulting prompts POSTed
+  to the real Ollama endpoint. Documented a real llama3.2
+  hallucination surfaced this way (misread `health_beauty`'s revenue
+  by 100x, named the wrong divergent category) as a known model
+  limitation, not a pipeline bug.
+- Updated `n8n/README.md`, `README.md`, and `PROJECT_SUMMARY.md` to
+  reflect both new workflows (3 → 4 documented) so they wouldn't go
+  unlisted the way an earlier RFM DAG fix had.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-20 — Bootstrap insightiq_dbt project: staging model + 3 marts
+
+**Prompt:** (reconstructed) "Set up a dbt project (insightiq_dbt)
+against the existing Postgres warehouse: a staging model over
+fact_orders, and mart models rebuilding the category-performance,
+customer-segments, and delivery-performance views this project already
+computes elsewhere (Airflow's category-summary DAG, the RFM DAG, and
+the SLA breach logic) — one select over the appropriate source/ref, no
+new business logic, plus schema.yml tests."
+
+**Output:** `dbt init`-scaffolded the project (`dbt_project.yml`,
+`profiles.yml`, the default `models/example/` starter models,
+`.gitignore`), then added the real models on top:
+- `models/staging/stg_fact_orders.sql` — thin pass-through over the
+  `fact_orders` source.
+- `models/marts/mart_category_performance.sql` — order count, avg
+  price/freight, total revenue per category, coalescing null
+  categories to `'unknown'` to satisfy a `not_null` test. 3 passing
+  data tests on first run.
+- `models/marts/mart_customer_segments.sql` — `customer_rfm_segments`
+  exposed as-is, with `not_null` on `customer_key` and
+  `accepted_values` on `segment_label` covering all 14 labels from the
+  RFM DAG's `label_segment()`.
+- `models/marts/mart_delivery_performance.sql` — per-state SLA breach
+  count/percentage, joining `stg_fact_orders` to `dim_customer`; a
+  custom singular test asserts `breach_percentage` stays within 0-100
+  (`dbt_utils` isn't installed, so no ready-made range test).
+- Removed the `dbt init` scaffolding (`my_first_dbt_model` /
+  `my_second_dbt_model` and their `models/example/` config block) once
+  real models existed — no longer needed, and one of the two
+  intentionally had a null row to demo a failing test, not something
+  to ship.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-20 — Add GitHub Actions CI; fix a PYTHONPATH import bug
+
+**Prompt:** (reconstructed) "Add a GitHub Actions workflow that runs
+the core Python unit tests on every push/PR to main — spin up a
+Postgres service container, apply sql/schema.sql, run pytest
+tests/test_transform.py. Skip anything that needs Docker/Airflow/
+Ollama, which won't be available on a standard runner."
+
+**Output:** Added `.github/workflows/ci.yml`. First run failed
+immediately: `tests/test_transform.py`'s `from etl.transform import
+...` raised `ModuleNotFoundError` — pytest was invoked without the
+repo root on `sys.path`, so the `etl` package couldn't be found. Fixed
+by setting `PYTHONPATH: .` on the test step (same fix pattern as an
+earlier Streamlit `sys.path` issue elsewhere in this project — this
+exact class of bug would resurface again two days later in the
+Makefile's `test` target, fixed there with `python -m pytest`
+instead). Added the CI badge to `n8n/README.md` along with a scope
+note clarifying it only covers `test_transform.py`, not the n8n
+workflows themselves (no local n8n/Postgres/Ollama stack on a
+GitHub-hosted runner).
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-20 — Run dbt from Airflow: insightiq_dbt_pipeline DAG
+
+**Prompt:** (reconstructed) "Add an Airflow DAG that runs dbt run then
+dbt test against the insightiq_dbt project from inside the Airflow
+containers, then asks Ollama for a plain-English summary of the run."
+
+**Output:** `dbt_run_task >> dbt_test_task >> summary_task`, both
+`BashOperator`s. `summary_task` needs no separate log file to know
+what happened — `BashOperator`'s default `do_xcom_push=True` already
+pushes the last line of each command's stdout, which for `dbt
+run`/`dbt test` is always their own `Done. PASS=.. ERROR=..` line;
+pulls both via XCom and hands them to Ollama.
+
+Three real problems found and fixed while getting this to actually run
+in the containers, not just parse:
+
+1. **Host resolution, again.** dbt's default `profiles.yml` points
+   `host: localhost` — correct for running `dbt` from the Mac
+   terminal, wrong inside the Airflow containers, where `localhost`
+   resolves to the container itself rather than the host's Postgres.
+   This is the exact same class of bug already fixed for the `etl/`
+   package in `insightiq_real_etl_dag.py`'s `REAL_DB_URL` override —
+   same root cause (container networking), different subsystem
+   hitting it. Fixed with a second, docker-specific profile.
+2. **`--profiles-dir` takes a directory, not a filename.** dbt only
+   ever looks for a file literally named `profiles.yml` inside
+   whatever directory `--profiles-dir` points at — there's no way to
+   give it an alternate filename. The first attempt at a
+   docker-specific profile (a `profiles_docker.yml` file sitting
+   directly in `insightiq_dbt/`) would have silently never been picked
+   up, falling back to the wrong (localhost) profile instead of
+   erroring loudly. Fixed by giving the docker profile its own
+   subdirectory, `insightiq_dbt/profiles_docker/profiles.yml`,
+   identical to the default except `host: host.docker.internal`, and
+   pointing `--profiles-dir` at that directory.
+3. **`airflow/requirements.txt` had no dbt at all.** `dbt-core`/
+   `dbt-postgres` weren't listed, so the CLI didn't exist in the
+   Airflow image and `dbt_run_task` failed immediately with "command
+   not found." Adding them surfaced a second, pre-existing issue: the
+   file's `numpy>=1.26,<2` pin (copied from the main project's
+   `requirements.txt`, where it exists for local torch/macOS
+   compatibility) broke the image build outright —
+   `apache/airflow:3.3.0` runs Python 3.13, `numpy` 1.26.4 has no
+   wheel for it, and there's no compiler in the container to build one
+   from source, while `numpy` 2.x (already bundled in the base image)
+   installs fine. Relaxed the pin to `numpy>=1.26` for this file only.
+
+A stray `profiles_docker/.user.yml` — dbt's anonymous-usage-tracking
+file, auto-written into whatever directory `--profiles-dir` points at
+if it doesn't already have one — got committed by accident in the same
+pass; removed it and gitignored the path (random per-machine UUID, not
+meant to be versioned).
+
+Verified end-to-end against the running containers: `dbt_run_task`
+built all 4 models, `dbt_test_task` passed all 7 tests, `summary_task`
+returned a real Ollama-generated summary (its first run hit the same
+30s Ollama-cold-load timeout pattern seen elsewhere in this project —
+the task still succeeds via the `try/except` fallback text).
+Documented all of this, including both infrastructure fixes, in
+`airflow/README.md`.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-21 — Document dbt + GitHub Actions in top-level docs
+
+**Prompt:** (reconstructed) "Update README.md and PROJECT_SUMMARY.md
+to reflect the dbt project and CI workflow that now exist — tech stack
+tables, the DAG-count bump from insightiq_dbt_pipeline, a CI badge."
+
+**Output:** Added the CI badge, a `Transformation` and `CI/CD` row to
+README's tech-stack table, bumped the documented Airflow DAG count
+8→9, added a "Dev log entries" stat to `PROJECT_SUMMARY.md`, and
+updated both files' narrative paragraphs to mention
+`insightiq_dbt_pipeline`.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-21 — Fix RFM DAG dropping customer_rfm_segments under dbt's dependent view
+
+**Prompt:** (reconstructed) "insightiq_rfm_segmentation's
+build_rfm_segments() writes with to_sql(if_exists='replace'), which
+does a DROP TABLE + recreate. Now that mart_customer_segments is a dbt
+view selecting from customer_rfm_segments, does that DROP break the
+view? Fix it if so."
+
+**Output:** Confirmed the theory: `if_exists="replace"` drops and
+recreates the table, which invalidates any view depending on it —
+exactly what `mart_customer_segments` now is. Replaced it with
+`TRUNCATE TABLE customer_rfm_segments` (guarded by `SELECT
+to_regclass('public.customer_rfm_segments')` so the first-ever run,
+when the table doesn't exist yet, doesn't try to truncate nothing)
+followed by `to_sql(..., if_exists="append")` — clears the rows
+without dropping the table, so the dependent view stays valid across
+every subsequent RFM run. Updated the DAG's `doc_md` to explain why
+TRUNCATE-not-replace is now required, not just what changed.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-21 — Add incremental (high-water-mark) loading mode to run_pipeline.py
+
+**Prompt:** (reconstructed) "Add an --mode incremental option to
+etl/run_pipeline.py: instead of truncating and reloading everything,
+only extract/transform/load orders newer than the current
+MAX(order_date_key) in fact_orders, and only add genuinely new
+dimension rows (unseen customer_id/seller_id/product_id) rather than
+truncating dim tables."
+
+**Output:** Added `run_incremental()` alongside the existing
+`run_full()`, gated by a new `--mode full|incremental` CLI flag
+(`full` stays the default, unchanged behavior). `_upsert_dim()`
+inserts only the natural-key rows not already present in a dim table,
+assigning new surrogate keys starting after the current
+`MAX(key_col)`; `_upsert_dim_date()` does the same for `dim_date`,
+computed only from dates the new orders actually need. New orders are
+found via `order_date_key > MAX(order_date_key) in fact_orders`
+(`None` high-water-mark on an empty table falls back to loading
+everything). Applies the same "orders with no matching `order_items`
+get dropped by the inner join" rule `run_full()` already had, now with
+an explicit count-and-list warning when it happens, since silently
+dropping rows is easy to miss in an incremental run that's supposed to
+be small.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-21 — n8n: add insightiq-dbt-status workflow; document insightiq-system-health
+
+**Prompt:** (reconstructed) "Add an n8n workflow that authenticates
+against Airflow's REST API, pulls the latest insightiq_dbt_pipeline
+DAG run, and gets Ollama to summarize it — same pattern as any
+existing Airflow-status workflow. Also make sure
+insightiq-system-health (already imported into this n8n install but
+never documented) has a README section."
+
+**Output:**
+- `insightiq-dbt-status`: Manual Trigger → Get Airflow Token (`POST
+  /auth/token`, since Airflow 3.x's API needs bearer tokens rather
+  than basic auth) → Get DAG Runs (latest `insightiq_dbt_pipeline`
+  run) → Code node (`Prepare Summary Request`, builds the Ollama HTTP
+  node's JSON body via `JSON.stringify()` rather than hand-escaping
+  quotes — the same JSON-escaping fix already established elsewhere in
+  this file) → Ollama generates a 1-2 sentence status summary.
+- `n8n import:workflow` hit the same CLI version-compat bug as the
+  earlier n8n workflows (`NOT NULL constraint failed:
+  workflow_entity.id`). The workflow was already present in this
+  machine's n8n database from an earlier import — confirmed its stored
+  node structure matched the committed `.json` exactly (5 nodes, same
+  names/parameters) and `PRAGMA integrity_check` still reported `ok`.
+  Verified every stage for real outside the GUI instead: a live `POST
+  /auth/token` returned a genuine bearer token, the DAG-runs query
+  with that token returned the real latest run (`state: success`,
+  `duration: 46.62s`), the Code node's JS was run in Node against that
+  real response and round-tripped through `JSON.parse` without error,
+  and the resulting body was POSTed to the real Ollama endpoint.
+  llama3.2's summary repeated a known
+  small-numbers-in-a-larger-JSON-blob limitation (misread the
+  `46.62`-second duration as "46 minutes" — a unit misread, not a
+  pipeline bug).
+- `insightiq-system-health` (Manual Trigger → Postgres row/DAG-run
+  counts → Get Airflow Token → Get DAG Runs, with no summarization
+  step — the last node's output isn't wired to anything, so it returns
+  raw data rather than an Ollama narrative) was already present in
+  this machine's n8n install from an earlier session but had never
+  gotten a README section. Documented it, and — unlike the other
+  workflows, which all hit the `import:workflow` CLI bug — verified it
+  with a genuine engine-level test: `n8n execute --id=<its id>` runs
+  an already-imported workflow through the real n8n engine without
+  needing the GUI's real sign-in. All 4 nodes reported
+  `executionStatus: "success"` against real data (`order_count:
+  102425`, 4 of the last 5 `insightiq_real_etl` runs `success`, 1 real
+  historical `failed` correctly surfaced, not filtered out).
+- Also committed `insightiq-dbt-status.json` itself, which had been
+  built and referenced in docs but was still untracked.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-21 — Add Snowflake as optional secondary warehouse target
+
+**Prompt:** (reconstructed) "Add an optional Snowflake target
+alongside Postgres: etl/load_snowflake.py mirroring etl/load.py's
+interface, and a --target postgres|snowflake|both flag on
+run_pipeline.py that fans writes out to both when asked. No Snowflake
+account is available to test against live, so it needs to fail
+clearly and immediately if someone picks --target snowflake/both
+without credentials configured, rather than a confusing traceback
+partway through a run."
+
+**Output:** `etl/load_snowflake.py`: `get_engine()` builds a
+SQLAlchemy engine via `snowflake.sqlalchemy.URL()` (not a hand-built
+connection string, since the Snowflake dialect has its own
+escaping/encoding rules for account/user/password) from
+`SNOWFLAKE_*` env vars, `_require_env()` raising a clear error naming
+every missing var rather than a bare `KeyError`. `run_pipeline.py`
+gained `_load_to_targets()` (fans a write out to Postgres and/or
+Snowflake per `--target`) and `_require_snowflake_configured()`
+(checked once at the top of `main()`, before any extraction work
+starts, so `--target snowflake` with no `SNOWFLAKE_ACCOUNT` fails
+immediately with a clear message instead of partway through a run).
+High-water-mark decisions in incremental mode always read from
+Postgres regardless of `--target` — Postgres stays the reference
+warehouse for "what's new"; `--target` only controls where the
+resulting write goes.
+
+Explicitly flagged, not glossed over: this module is untested against
+a real Snowflake account (none available in this environment) —
+verified only what's verifiable without one: the module imports
+cleanly, `--target snowflake`/`--target both` fail gracefully with the
+credential-check message when unconfigured, and the existing
+`--target postgres` (default) path is unaffected. The module's own
+docstring lists specific known risks to watch for on a first real run
+— Snowflake's identifier case-folding (`to_sql()`-created tables may
+not match how a Snowflake client quotes them back), the connecting
+role's required privileges, and `to_sql()`'s slow default
+insert-per-row behavior — flagged as things to verify then, not
+assumed safe now. Documented all of this in `.env.example` and
+`requirements.txt` (the `snowflake-sqlalchemy` dependency is commented
+out by default, uncommented only once real credentials exist), and
+cleaned up a duplicate active `SNOWFLAKE_*` block that had been left
+in `.env.example` alongside the commented example.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-22 — dbt snapshot: SCD Type 2 history for customer_rfm_segments
+
+**Prompt:** "cd insightiq_dbt, create snapshots/customer_rfm_snapshot.sql
+— a dbt snapshot using the timestamp strategy (or check_cols if no
+reliable updated_at column exists on customer_rfm_segments) to track
+changes to segment_label and monetary over time. Add a snapshot config
+block (target_schema, unique_key=customer_key, strategy). Explain SCD
+Type 2 briefly in a comment..."
+
+**Output:** Checked `customer_rfm_segments`' actual write path first
+(`insightiq_rfm_segmentation_dag.py`: `TRUNCATE` +
+`to_sql(if_exists="append")`, no `updated_at` column) — confirmed a
+timestamp strategy wasn't viable, so used `check_cols` comparing
+`segment_label`/`monetary`. Wrote `snapshots/customer_rfm_snapshot.sql`
+with `target_schema='snapshots'`, `unique_key='customer_key'`, plus a
+comment explaining `dbt_valid_from`/`dbt_valid_to` and why this is the
+one table in the project that preserves history instead of being
+overwritten every run.
+
+First `dbt snapshot` run failed to compile: `strategy='check_cols'`
+isn't a real strategy name — `check_cols` is the config listing
+*which* columns to compare; the strategy itself is called `check`.
+dbt's own error made the fix obvious (`snapshot_check_cols_strategy`
+macro not found). Fixed to `strategy='check'` with `check_cols=[...]`
+alongside it, then verified live: first run inserted all 98,666 rows;
+a second run with no data change correctly no-op'd (`INSERT 0 0`), and
+a spot-checked row showed `dbt_valid_from` set and `dbt_valid_to`
+null.
+
+Then, in follow-up turns: documented columns/strategy in
+`snapshots/schema.yml` (2 tests: `not_null` on `customer_key` and
+`dbt_valid_from`) and added
+`analyses/customer_rfm_snapshot_history.sql`, a sample query surfacing
+customers with more than one snapshot row (i.e. a tracked change),
+verified via `dbt compile` and a live run against the snapshot table.
+
+**Edit:** None — used as-is (the `strategy='check'` fix was applied
+immediately after dbt's own compile error identified it, in the same
+turn).
+
+---
+
+## 2026-07-22 — Airflow Assets-based scheduling demo
+
+**Prompt:** "Create airflow/dags/insightiq_assets_demo_dag.py
+demonstrating Airflow's Asset feature (Airflow 3.x's renamed
+Datasets): define an Asset for 'fact_orders_loaded' (a URI-based
+identifier, e.g. 'postgres://insightiq/fact_orders'), have
+insightiq_real_etl's transform_task declare it as an outlet..., and
+create a new lightweight DAG insightiq_post_load_asset_consumer
+scheduled on that asset as its inlet/schedule... Explain in doc_md how
+this differs architecturally from the TriggerDagRunOperator approach
+already used for insightiq_data_validation..."
+
+**Output:** Added `dags/utils/assets.py` with a shared
+`FACT_ORDERS_LOADED` Asset (imported by both DAGs, so the outlet and
+the schedule reference the exact same object). `insightiq_real_etl_dag.py`'s
+`transform_task` gained `outlets=[FACT_ORDERS_LOADED]`. New
+`insightiq_assets_demo_dag.py` defines `insightiq_post_load_asset_consumer`,
+`schedule=[FACT_ORDERS_LOADED]` — no cron, no explicit trigger call —
+with the TriggerDagRunOperator-vs-Asset contrast written into both the
+module docstring and `doc_md`.
+
+First attempt used the literal URI from the prompt,
+`Asset("postgres://insightiq/fact_orders")` — failed at DAG-parse time
+inside the actual running Airflow 3.3.0 container: `ValueError: URI
+format postgres:// must contain database, schema, and table names`.
+The postgres provider's AIP-60 URI sanitizer requires a full
+`host:port/database/schema/table` path, which a bare `host/table` URI
+doesn't satisfy. Switched to the provider's own `create_asset(host=...,
+port=..., database=..., schema=..., table=...)` helper, producing
+`postgres://host.docker.internal:5544/insightiq/public/fact_orders` —
+matching the real connection details `insightiq_real_etl_dag.py`
+already uses.
+
+Verified live end-to-end, not just parsed: `airflow
+dags list-import-errors` clean, both DAGs importable inside the
+running scheduler container. Unpaused `insightiq_post_load_asset_consumer`
+(new DAGs are paused on creation), triggered `insightiq_real_etl` for
+real, and confirmed the chain fired: the asset event recorded
+`source_task_id=transform_task`, `source_dag_id=insightiq_real_etl`
+matching that exact run, which automatically created a new
+`insightiq_post_load_asset_consumer` DagRun — its task log explicitly
+stated "Triggered by asset event(s)" with the full event trace.
+Re-paused the demo DAG afterward, per its "paused by default, unpause
+to see this fire" documented state.
+
+**Edit:** None — the URI fix was applied immediately after the
+container's own compile error identified the exact problem.
+
+---
+
+## 2026-07-22 — dbt exposures: streamlit_dashboard and power_bi_dashboard
+
+**Prompt:** "cd insightiq_dbt, create models/exposures.yml declaring
+two exposures: 'streamlit_dashboard' (type: application, depends on
+mart_category_performance, mart_customer_segments,
+mart_delivery_performance, owner name/email) and 'power_bi_dashboard'
+(type: dashboard, same dependencies, maturity: low since it's not yet
+built). Run dbt docs generate again and confirm exposures appear as
+downstream nodes in the lineage graph."
+
+**Output:** Confirmed `app/streamlit_app.py` is a real, running
+Streamlit app (embeds/links a Power BI report) and that no `.pbix`
+file exists anywhere in the repo, before writing the two exposures —
+so `streamlit_dashboard` got `maturity: high` (it's built) and
+`power_bi_dashboard` got `maturity: low` (planned, not built), rather
+than guessing. Ran `dbt docs generate` ("Found ... 2 exposures") and
+confirmed both resolve in `target/manifest.json`: `depends_on` lists
+all three marts, and each mart's `child_map` lists both exposures as
+downstream nodes — will render in the lineage graph.
+
+**Edit:** None — used as-is.
+
+---
+
+## 2026-07-22 — Add pre-commit hooks (black, ruff) and a Makefile
+
+**Prompt:** "Create a Makefile at the repo root with targets: setup
+(venv + pip install + pre-commit install), etl (run the full
+pipeline), dbt-run (cd insightiq_dbt && dbt run && dbt test),
+airflow-up (...), n8n-up (...), test (pytest tests/ + cd insightiq_dbt
+&& dbt test), lint (cd insightiq_dbt && sqlfluff lint models/
+--dialect postgres, plus ruff check . from root), and all (setup + etl
++ dbt-run). Document each target with a comment above it... Confirm
+make test and make lint both run successfully from the repo root."
+
+**Output:** `pre-commit`, `black`, `ruff`, `sqlfluff` were already
+installed in the local venv but undeclared in `requirements.txt` —
+added a "Dev tools" section so `make setup` actually provisions what
+`make lint`/pre-commit need on a fresh clone. Wrote the `Makefile`
+with all 9 requested targets, each preceded by a `## target:
+description` comment, plus a `help` target that greps them.
+
+`make test`'s first version called `venv/bin/pytest tests/ -v`
+directly and failed: `ModuleNotFoundError: No module named 'etl'`.
+Root cause: the `pytest` binary invoked directly does not add the repo
+root to `sys.path` the way `python -m pytest` does (`-m` prepends
+`''`/cwd to `sys.path[0]`; the bare binary only adds the test file's
+own directory). This is the same class of bug fixed two days earlier
+for GitHub Actions CI (`PYTHONPATH: .` there) — different fix
+mechanism (`python -m pytest` here vs. an env var there), same
+underlying cause. Fixed by changing the target to `$(VENV)/python -m
+pytest tests/ -v`.
+
+Verified for real rather than trusting the Makefile syntax alone:
+`make test` (2 pytest + 9 dbt tests, all pass), `make lint` (sqlfluff
+clean — confirmed it works both with and without the local, gitignored
+`.sqlfluff` dbt-templater config, so a fresh clone isn't silently
+dependent on it; ruff clean), `make dbt-run` (builds and tests all 4
+dbt models), `make help`. `setup`/`etl`/`airflow-up`/`n8n-up`/`all`
+were dry-run only (`make -n`) rather than actually executed, since
+running them for real would recreate the venv, reload the warehouse,
+restart Docker, or launch a long-running n8n process.
+
+Separately, `insightiq_dbt/.sqlfluff` (a local sqlfluff config,
+`templater = dbt`) appeared as an untracked file around this time —
+created by the user's editor/linter tooling, not by this work — and
+was added to `insightiq_dbt/.gitignore` rather than committed, since
+it's a per-machine convenience file, not a project requirement
+(confirmed `sqlfluff lint models/ --dialect postgres` passes cleanly
+without it). Separately, `mart_delivery_performance.sql`'s header
+comment was shortened on request — confirmed afterward, during the
+2026-07-22 portfolio-readiness check, that this incidentally fixed a
+real `sqlfluff` `LT05` (line-too-long) violation: the original comment
+was 82 characters against sqlfluff's default `max_line_length = 80`;
+the shortened version is 66.
+
+**Edit:** The `test` target's `pytest` invocation was corrected to
+`python -m pytest` immediately after the `ModuleNotFoundError`
+identified the cause; everything else used as generated.
+
+---
+
+## 2026-07-22 — Document today's additions across READMEs; write insightiq_dbt/README.md
+
+**Prompt:** "Update root README.md, airflow/README.md, and create
+insightiq_dbt/README.md documenting today's additions: dbt snapshots,
+Airflow Assets-based scheduling, sqlfluff linting, pre-commit hooks,
+and the Makefile. Update PROJECT_SUMMARY.md's 'numbers that matter'
+section with current counts (DAGs, dbt models/tests/snapshots/exposures,
+n8n workflows)."
+
+**Output:** `insightiq_dbt/README.md` existed only as the unmodified
+`dbt init` boilerplate ("Welcome to your new dbt project!") since the
+07-20 bootstrap — replaced it with real documentation of the project's
+structure, the snapshot's `check` strategy and why, the two exposures,
+the two-profiles-one-project (`profiles.yml` vs
+`profiles_docker/profiles.yml`) split, and `sqlfluff`/Makefile usage.
+Root `README.md` gained a "Dev tooling" section (Makefile target table
++ pre-commit summary) and an `insightiq_dbt/` bullet under
+Orchestration. `airflow/README.md` got a short note pointing at `make
+airflow-up` and confirming DAG files are covered by the same
+pre-commit hooks as the rest of the codebase. `PROJECT_SUMMARY.md`'s
+numbers section gained dbt counts (4 models, 9 tests, 1 snapshot, 2
+exposures, 7 sources) and an n8n workflow count — while counting,
+found that `n8n/workflows/` has 5 committed `.json` files but
+`n8n/README.md` documents 6 workflows (`insightiq-system-health` was
+imported directly into the local n8n install and never exported to a
+file) — noted the discrepancy explicitly rather than reporting a
+single, falsely-tidy number.
+
+**Edit:** None — used as-is.
