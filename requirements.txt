@@ -36,3 +36,9 @@ streamlit>=1.36
 
 # Testing
 pytest>=8.2
+
+# Dev tools (pre-commit hooks + Makefile's `lint` target)
+pre-commit>=4.6
+black>=24.10
+ruff>=0.8
+sqlfluff>=4.0
