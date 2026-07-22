@@ -21,7 +21,9 @@ Python, pandas, SQLAlchemy, PostgreSQL, dbt, Apache Airflow, n8n, Power BI/DAX, 
 - **fact_orders**: 102,425 rows · **dim_customer**: 99,441 · **dim_product**: 32,951 · **dim_seller**: 3,095 · **dim_date**: 799
 - **customer_rfm_segments**: 98,666 rows · **category_summary**: 73 rows
 - **Airflow DAGs**: 10
-- **Tests**: 14 passing (12 Airflow/`pytest tests/` in `airflow/`, 2 in root `tests/`)
+- **dbt**: 4 models (1 staging + 3 marts) · 9 data tests · 1 snapshot (SCD Type 2 on `customer_rfm_segments`) · 2 exposures · 7 sources
+- **n8n workflows**: 5 committed (`n8n/workflows/*.json`); 6 documented in `n8n/README.md` (`insightiq-system-health` was imported directly into the local n8n install and was never exported as a file)
+- **Tests**: 14 Python passing (12 Airflow/`pytest tests/` in `airflow/`, 2 in root `tests/`) + 9 dbt data tests
 - **Custom Claude Code commands/skills**: 16 (`.claude/commands/`)
 - **Dev log entries**: 39 (`dev-logs/prompts.md`)
 

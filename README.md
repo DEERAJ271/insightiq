@@ -27,14 +27,15 @@ Raw CSV --> Python ETL --> Postgres warehouse --> Power BI dashboard
 |----------------|---------------------------------------------|
 | ETL            | Python, pandas, SQLAlchemy                  |
 | Warehouse      | PostgreSQL (star schema)                    |
-| Transformation | dbt (staging model + marts, run/tested via Airflow) |
+| Transformation | dbt (staging model + marts, a snapshot for SCD Type 2 history, 2 exposures, run/tested via Airflow) |
 | Orchestration  | Apache Airflow (DAGs, retries, scheduling), n8n (visual prototyping) |
 | BI             | Power BI, DAX                               |
 | Retrieval      | LangChain, Chroma, HuggingFace embeddings   |
 | LLM            | Claude API (Anthropic) or local Ollama (llama3.2) — switchable via `LLM_BACKEND`, default `ollama` |
 | App layer      | Streamlit                                   |
 | CI/CD          | GitHub Actions                              |
-| Dev workflow   | Claude Code (VS Code)                       |
+| Lint/format    | pre-commit (black, ruff), sqlfluff (dbt SQL) |
+| Dev workflow   | Claude Code (VS Code), Makefile             |
 
 ## Dataset
 
@@ -84,6 +85,29 @@ Power BI: point a new report at the `insightiq` Postgres database
 `fact_orders` / `dim_*` tables. See `powerbi/README.md` for suggested
 measures.
 
+## Dev tooling
+
+A root `Makefile` wraps the common local workflows — run `make help` for
+the full list (self-documenting via `## target: description` comments
+above each target):
+
+| Target | Does |
+|--------|------|
+| `make setup` | create `venv`, `pip install -r requirements.txt`, install pre-commit git hooks |
+| `make etl` | run the full ETL pipeline (`etl/run_pipeline.py`) |
+| `make dbt-run` | `cd insightiq_dbt && dbt run && dbt test` |
+| `make airflow-up` | start the project's own Postgres container, then the Airflow Docker Compose stack |
+| `make n8n-up` | start n8n (with the Code node's `child_process` builtin allowed — see `n8n/README.md`) |
+| `make test` | `pytest tests/` + `dbt test` |
+| `make lint` | `sqlfluff lint` over `insightiq_dbt/models/` + `ruff check .` over the rest |
+| `make all` | `setup` + `etl` + `dbt-run` — full local bootstrap |
+
+**pre-commit** (`.pre-commit-config.yaml`) runs `black` and `ruff --fix`
+on every commit across the Python codebase, installed via `make setup`
+or manually with `pre-commit install`. dbt SQL isn't covered by these
+hooks — lint it separately with `sqlfluff lint models/ --dialect
+postgres` from `insightiq_dbt/` (or `make lint`, which runs both).
+
 ## Orchestration
 
 - **`airflow/`** — Apache Airflow 3.3.0 via Docker Compose: 10 DAGs
@@ -101,6 +125,12 @@ measures.
   ETL-orchestration, data-validation, RFM-alerting, and category-revenue
   reporting ideas, built first and kept alongside Airflow rather than
   replaced by it. See `n8n/README.md`.
+- **`insightiq_dbt/`** — dbt project transforming the warehouse in place:
+  a staging model, 3 marts, a snapshot (SCD Type 2 history on
+  `customer_rfm_segments` — the one table in this project that isn't
+  overwritten on every load), and 2 exposures documenting downstream
+  consumers (`streamlit_dashboard`, `power_bi_dashboard`). See
+  `insightiq_dbt/README.md`.
 
 ## Project structure
 
@@ -114,8 +144,10 @@ insightiq/
 ├── app/                # Streamlit UI
 ├── airflow/            # Airflow DAGs (Docker Compose) — see airflow/README.md
 ├── n8n/                # n8n workflows (visual orchestration) — see n8n/README.md
+├── insightiq_dbt/      # dbt project: staging model, marts, snapshot, exposures
 ├── powerbi/            # dashboard notes (the .pbix itself isn't checked in)
 ├── tests/              # unit tests
+├── Makefile            # setup/etl/dbt-run/airflow-up/n8n-up/test/lint/all — see `make help`
 └── dev-logs/           # Claude Code prompt log — the "how it was built" record
 ```
 

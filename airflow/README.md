@@ -13,6 +13,16 @@ cd airflow
 docker compose up -d   # airflow-init runs first automatically, then all services
 ```
 
+Or from the repo root: `make airflow-up`, which also starts the
+project's own Postgres container (`docker start insightiq-pg`) first —
+the warehouse most of these DAGs read from, separate from the Compose
+stack's own internal metadata Postgres. See the root `Makefile`
+(`make help` for the full target list).
+
+DAG files under `dags/` are covered by the repo-root pre-commit hooks
+(`black` + `ruff --fix`, `.pre-commit-config.yaml`) — same formatting/lint
+rules as the rest of the Python codebase, no Airflow-specific exemption.
+
 UI: `http://localhost:8080`, default login `airflow` / `airflow`
 (`_AIRFLOW_WWW_USER_USERNAME` / `_AIRFLOW_WWW_USER_PASSWORD` in
 `docker-compose.yaml`, both overridable via `airflow/.env`).
